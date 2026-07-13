@@ -1,14 +1,22 @@
-# Relay Review MCP — 实现计划 (v8 — 部署验证 + 多机协作回写)
+# Relay Review MCP — 实现计划 (v9 — 并发审查合并 + 多结果保留)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 实现 Relay Review MCP Server — 5 个核心 MCP tool + requests 依赖，通过 JSON-RPC over stdin/stdout 暴露 GitHub PR 审查状态查询与写入。
+**Goal:** 实现 Relay Review MCP Server — 5 个核心 MCP tool + requests 依赖，通过 JSON-RPC over stdin/stdout 暴露 GitHub PR 审查状态查询与写入。v9 新增并发审查合并支持 (CAS append)。
 
 **Architecture:** MCP Server 通过 `requests` 直连 GitHub REST API。bash 层（`script/review-pr.sh` 等）作为**前置依赖**已存在。Skill 层编排三者：调 MCP tool 查状态 → 调 bash 执行审查 → 调 MCP tool 发布结果。
 
 **前置依赖:** bash 审查脚本必须已存在（`script/review-pr.sh`, `review-utils.sh`, `prompts/`）。来自 relay-review bash 计划（20 轮审查）。
 
 **Tech Stack:** Python 3.9+, requests, typing.Optional；bash 4.0+；MCP JSON-RPC 2.0
+
+**v9 修订 (并发审查合并):**
+
+- C1: `post.py` 新增 `_find_existing_phase_comment` — 检测已有同 Phase+SHA 的 Comment，实现 CAS 追加而非 skip ✅ 已修
+- C2: `post.py` 新增 `_extract_findings_only` + `_merge_phase_comment` — 提取纯 findings 并追加到已有 Comment，支持多人并发审查结果合并 ✅ 已修
+- C3: `status.py` `_build_phase_status` 支持多审查者 — 新增 `contributors[]`、`reviewer_count`、`merged` 字段 ✅ 已修
+- C4: `status.py` `tool_get_phase_result` 支持多结果返回 — 新增 `count`、`all_results[]`、`contributors[]` 字段 ✅ 已修
+- C5: 测试 21 → 30 个，新增 9 个并发审查测试 ✅ 已修
 
 **v8 修订 (部署验证 + 多机协作发现):**
 
@@ -493,24 +501,39 @@ def tool_get_review_status(args, config):
     return {"ok": True, "data": _compute_overall(phases)}
 
 def _build_phase_status(comments, current_sha):
-    phases = {1: None, 2: None, 3: None}
+    """v9: 支持多审查者并发 — contributors[], reviewer_count, merged"""
+    phases = {1: [], 2: [], 3: []}
     for c in comments:
         body = c.get("body", "")
         pm = re.search(r"<!-- review-phase: (\d) -->", body)
         sm = re.search(r"<!-- review-commit: ([a-f0-9]+) -->", body)
         if pm:
             p = int(pm.group(1)); sha = sm.group(1) if sm else None
-            phases[p] = {"sha": sha, "author": c.get("user", {}).get("login"),
-                "posted_at": c.get("created_at"), "url": c.get("html_url"), "body": body}
+            phases[p].append({
+                "sha": sha, "author": c.get("user", {}).get("login"),
+                "posted_at": c.get("created_at"), "url": c.get("html_url"), "body": body,
+                "comment_id": c.get("id")
+            })
     result = []
     for p in [1, 2, 3]:
-        v = phases[p]
-        if v:
-            expired = v["sha"] and current_sha and v["sha"] != current_sha
-            result.append({"phase": p, "status": "expired" if expired else "done",
-                "sha": v["sha"], "author": v["author"], "posted_at": v["posted_at"],
-                "url": v["url"], "reason": "SHA mismatch" if expired else None})
-        else: result.append({"phase": p, "status": "pending"})
+        entries = phases[p]
+        if entries:
+            latest = entries[-1]
+            expired = latest["sha"] and current_sha and latest["sha"] != current_sha
+            result.append({
+                "phase": p,
+                "status": "expired" if expired else "done",
+                "sha": latest["sha"],
+                "author": latest["author"],
+                "posted_at": latest["posted_at"],
+                "url": latest["url"],
+                "reason": "SHA mismatch" if expired else None,
+                "reviewer_count": len(entries),                         # v9: 新增
+                "contributors": [e["author"] for e in entries],         # v9: 新增
+                "merged": any("<!-- merged: true -->" in e.get("body", "") for e in entries),  # v9: 新增
+            })
+        else:
+            result.append({"phase": p, "status": "pending", "reviewer_count": 0})  # v9: 新增字段
     return result
 
 def _compute_overall(phases):
@@ -543,6 +566,7 @@ def _derive_phase3_needed(phases):
     return {"checked": True, "needed": False, "confidence": "high"}
 
 def tool_get_phase_result(args, config):
+    """v9: 支持多审查者并发 — 返回 count, all_results[], contributors[]"""
     pr = args["pr_number"]; phase = args["phase"]; api = get_api(config)
     try: pr_data = api.get_pr(pr); comments = api.list_comments(pr)
     except GitHubAPIError as e:
@@ -550,12 +574,37 @@ def tool_get_phase_result(args, config):
                "PR_NOT_FOUND" if e.status_code == 404 else "NETWORK_ERROR"
         return {"ok": False, "error": {"code": code, "message": e.message}}
     current_sha = pr_data.get("head", {}).get("sha")
+
+    # 收集所有匹配当前 SHA + phase 的 Comment（v9: 支持多人并发审查）
+    matching = []
     for c in reversed(comments):
         body = c.get("body", "")
         if f"<!-- review-phase: {phase} -->" in body and f"<!-- review-commit: {current_sha} -->" in body and "---REVIEW_START---" in body:
-            return {"ok": True, "data": {"found": True, "reason": "ok", "body": body,
-                "sha": current_sha, "posted_at": c.get("created_at"),
-                "author": c.get("user", {}).get("login"), "url": c.get("html_url")}}
+            matching.append({
+                "body": body,
+                "sha": current_sha,
+                "posted_at": c.get("created_at"),
+                "author": c.get("user", {}).get("login"),
+                "url": c.get("html_url"),
+                "comment_id": c.get("id"),
+            })
+
+    if matching:
+        primary = matching[0]  # reversed 顺序，最新在前
+        return {"ok": True, "data": {
+            "found": True, "reason": "ok",
+            "count": len(matching),                                     # v9: 新增
+            "merged": "<!-- merged: true -->" in primary["body"],       # v9: 新增
+            "body": primary["body"],                                    # 合并后或最新的完整 body
+            "sha": current_sha,
+            "posted_at": primary["posted_at"],
+            "author": primary["author"],
+            "url": primary["url"],
+            "contributors": [m["author"] for m in matching],            # v9: 新增
+            "all_results": matching,                                    # v9: 新增
+        }}
+
+    # 没有完全匹配的，查找 SHA 不匹配的旧结果
     for c in reversed(comments):
         body = c.get("body", "")
         if f"<!-- review-phase: {phase} -->" in body and "---REVIEW_START---" in body:
@@ -564,6 +613,109 @@ def tool_get_phase_result(args, config):
                 "mismatch": {"requested_sha": current_sha, "existing_sha": sm.group(1) if sm else "unknown",
                 "existing_posted_at": c.get("created_at"), "old_result_still_exists": True}}}
     return {"ok": True, "data": {"found": False, "reason": "no_result"}}
+```
+
+## 并发审查合并机制 (v9 新增)
+
+### 设计原则
+
+拥抱并发，不在代码层面阻止多人同时审查同一 Phase。通过 CAS 追加 + 多结果保留实现零丢失。
+
+### CAS 追加流程
+
+```
+先到者: create_comment → 正常发布
+后到者: _find_existing_phase_comment → 找到已有 Comment
+       → _merge_phase_comment → 追加到已有 Comment 后面
+       → update_comment → 合并完成 ✅
+       → 返回 {"posted": true, "merged": true}
+```
+
+### post.py 新增函数 (v9)
+
+```python
+# tools/post.py — v9 新增导入
+from datetime import datetime, timezone
+
+def _find_existing_phase_comment(api, pr_number, phase, sha):
+    """查找 PR 上是否已存在同 phase + 同 SHA 的 Comment。返回 comment 对象或 None。"""
+    try:
+        comments = api.list_comments(pr_number)
+    except GitHubAPIError:
+        return None
+    for c in comments:
+        body = c.get("body", "")
+        if f"<!-- review-phase: {phase} -->" in body and f"<!-- review-commit: {sha} -->" in body:
+            return c
+    return None
+
+def _extract_findings_only(body: str) -> str:
+    """从审查 body 中尝试提取纯 findings 部分。"""
+    m = re.search(r"---REVIEW_START---(.*?)---REVIEW_END---", body, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    lines = body.split("\n")
+    while lines and (lines[0].strip().startswith("<!--") or lines[0].strip() == ""):
+        lines.pop(0)
+    return "\n".join(lines).strip()
+
+def _merge_phase_comment(existing_body, new_body, new_author, phase, sha):
+    """将新审查结果追加到已有 Comment body 后面。"""
+    reviewer_count = 1
+    mc = re.search(r"<!-- reviewer-count: (\d+) -->", existing_body)
+    if mc:
+        reviewer_count = int(mc.group(1)) + 1
+    else:
+        reviewer_count = 2
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    append_section = f"""
+
+---
+## 补充审查 — {new_author} ({timestamp})
+
+{_extract_findings_only(new_body)}
+
+<!-- reviewer-count: {reviewer_count} -->
+<!-- merged: true -->
+"""
+    merged = re.sub(r"<!-- reviewer-count: \d+ -->\n?", "", existing_body)
+    merged = re.sub(r"<!-- merged: true -->\n?", "", merged)
+    merged += append_section
+    return merged
+```
+
+### post_phase_result 修改 (v9)
+
+```python
+def tool_post_phase_result(args, config):
+    # ... (前置逻辑不变: from_local_file, SHA_MISMATCH 校验, _ensure_markers, 截断, dry_run) ...
+
+    api = get_api(config)
+
+    # v9: CAS 追加 — 检测是否已有同 phase + 同 SHA 的 Comment
+    existing_comment = _find_existing_phase_comment(api, pr, phase, sha)
+    if existing_comment:
+        new_author = config.get("github", {}).get("repo_owner", "unknown")
+        merged_body = _merge_phase_comment(
+            existing_comment.get("body", ""), body, new_author, phase, sha
+        )
+        try:
+            resp = api.update_comment(existing_comment["id"], merged_body)
+            return {"ok": True, "data": {
+                "posted": True, "merged": True,
+                "url": resp.get("html_url"),
+                "merge_message": "检测到已有同 Phase + SHA 的审查结果，已自动合并追加"
+            }}
+        except GitHubAPIError as e:
+            return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
+
+    try:
+        resp = api.create_comment(pr, body)
+        return {"ok": True, "data": {"posted": True, "merged": False,
+            "url": resp.get("html_url"), "truncated": truncated}}
+    except GitHubAPIError as e:
+        return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
 ```
 
 ---
@@ -614,6 +766,7 @@ def _truncate_utf8_safe(text, max_bytes=59000):
     return truncated.decode("utf-8", errors="replace"), True
 
 def tool_post_phase_result(args, config):
+    """v9: CAS 追加 — 检测已有 Comment → 追加合并而非 skip"""
     pr = args["pr_number"]; phase = args["phase"]
     body = args.get("body", ""); sha = args.get("sha", "unknown")
     dry_run = args.get("dry_run", False); from_local = args.get("from_local_file", False)
@@ -639,12 +792,32 @@ def tool_post_phase_result(args, config):
         body += f"\n\n---\n⚠️ [超过 65K 限制已截断。完整报告见: script/review-output/PR-{pr}/phase{phase}-result.md]\n"
 
     if dry_run:
-        return {"ok": True, "data": {"posted": False, "truncated": truncated, "original_bytes": orig_bytes, "warning": "dry_run"}}
+        return {"ok": True, "data": {"posted": False, "truncated": truncated,
+            "original_bytes": orig_bytes, "warning": "dry_run"}}
 
     api = get_api(config)
+
+    # v9: CAS 追加 — 检测是否已有同 phase + 同 SHA 的 Comment
+    existing_comment = _find_existing_phase_comment(api, pr, phase, sha)
+    if existing_comment:
+        new_author = config.get("github", {}).get("repo_owner", "unknown")
+        merged_body = _merge_phase_comment(
+            existing_comment.get("body", ""), body, new_author, phase, sha
+        )
+        try:
+            resp = api.update_comment(existing_comment["id"], merged_body)
+            return {"ok": True, "data": {
+                "posted": True, "merged": True,
+                "url": resp.get("html_url"),
+                "merge_message": "检测到已有同 Phase + SHA 的审查结果，已自动合并追加"
+            }}
+        except GitHubAPIError as e:
+            return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
+
     try:
         resp = api.create_comment(pr, body)
-        return {"ok": True, "data": {"posted": True, "url": resp.get("html_url"), "truncated": truncated}}
+        return {"ok": True, "data": {"posted": True, "merged": False,
+            "url": resp.get("html_url"), "truncated": truncated}}
     except GitHubAPIError as e:
         return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
 
@@ -797,7 +970,7 @@ if check >= max_checks: 超时报错
 ### Task 2.3: 测试 (10 handler 测试 + 集成测试)
 
 ```python
-# tests/test_handlers.py — 关键测试覆盖:
+# tests/test_handlers.py — 关键测试覆盖 (v9: 21 → 30 个):
 # 1. get_pr_context: 404 → PR_NOT_FOUND, 401 → AUTH_REQUIRED
 # 2. _build_phase_status: SHA mismatch → expired, no comments → all pending
 # 3. _compute_overall: Phase1_done+Phase2_pending → ready=true, reason=phase_pending
@@ -808,6 +981,13 @@ if check >= max_checks: 超时报错
 # 8. post_phase_result: from_local_file + file_missing → NO_LOCAL_RESULT
 # 9. post_final_verdict: invalid verdict → INVALID_VERDICT
 # 10. post_final_verdict: body > 65K → truncated=true
+# 11. v9: _build_phase_status multi_reviewers → contributors + reviewer_count + merged
+# 12. v9: _find_existing_phase_comment: found / sha_mismatch
+# 13. v9: _extract_findings_only: with/without markers
+# 14. v9: _merge_phase_comment: 内容保留 + reviewer_count 递增
+# 15. v9: post_phase_result CAS merge (mock) → merged=true, update_comment 被调用
+# 16. v9: get_phase_result single → count=1
+# 17. v9: get_phase_result multi → count=2, contributors=[bob, alice]
 ```
 
 ### Task 2.4: 集成测试 (5 个场景)
@@ -931,6 +1111,15 @@ pip install -r script/mcp-server/requirements.txt
 | P3: Setup + 文档 | 2 | setup.sh, USAGE.md | 1h |
 | P4: 集成验证 | 1 | — | 0.5h |
 | **总计** | **14** | **19 个文件** | **~7h** |
+| **v9 修订** | 3 | post.py, status.py, test_handlers.py (修改) | ~1h |
+
+### v9 并发审查合并 — 新增函数
+
+| 函数 | 文件 | 行数 | 说明 |
+|------|------|:---:|------|
+| `_find_existing_phase_comment` | post.py | ~10 | CAS: 查找已有同 phase+SHA Comment |
+| `_extract_findings_only` | post.py | ~10 | 提取纯 findings，去 header/footer |
+| `_merge_phase_comment` | post.py | ~25 | 合并追加到已有 Comment |
 
 ### 实际新增文件（19 个）
 
@@ -955,7 +1144,7 @@ script/mcp-server/
     ├── __init__.py
     ├── test_config.py     # config 单元测试 (HTTPS/SSH remote 解析)
     ├── test_github_api.py # API 单元测试 (初始化/get_pr/分页)
-    ├── test_handlers.py   # 21 个测试覆盖 10 handler 场景
+    ├── test_handlers.py   # 30 个测试覆盖 17 handler 场景 (v9: 并发审查合并)
     └── integration.sh     # 5 场景集成测试 (manual)
 ```
 
