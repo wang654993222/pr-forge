@@ -1,14 +1,24 @@
-# Relay Review MCP — 实现计划 (v9 — 并发审查合并 + 多结果保留)
+# Relay Review MCP — 实现计划 (v10 — Gitee 平台支持 + 并发审查合并 + 多结果保留)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 实现 Relay Review MCP Server — 5 个核心 MCP tool + requests 依赖，通过 JSON-RPC over stdin/stdout 暴露 GitHub PR 审查状态查询与写入。v9 新增并发审查合并支持 (CAS append)。
+**Goal:** 实现 Relay Review MCP Server — 5 个核心 MCP tool + requests 依赖，通过 JSON-RPC over stdin/stdout 暴露 GitHub/Gitee PR 审查状态查询与写入。v10 新增 Gitee 平台支持 (方案A: 独立 API 封装)。
 
-**Architecture:** MCP Server 通过 `requests` 直连 GitHub REST API。bash 层（`script/review-pr.sh` 等）作为**前置依赖**已存在。Skill 层编排三者：调 MCP tool 查状态 → 调 bash 执行审查 → 调 MCP tool 发布结果。
+**Architecture:** MCP Server 通过 `requests` 直连 GitHub/Gitee REST API。bash 层（`script/review-pr.sh` 等）作为**前置依赖**已存在。Skill 层编排三者：调 MCP tool 查状态 → 调 bash 执行审查 → 调 MCP tool 发布结果。
 
 **前置依赖:** bash 审查脚本必须已存在（`script/review-pr.sh`, `review-utils.sh`, `prompts/`）。来自 relay-review bash 计划（20 轮审查）。
 
 **Tech Stack:** Python 3.9+, requests, typing.Optional；bash 4.0+；MCP JSON-RPC 2.0
+
+**v10 修订 (Gitee 平台支持):**
+
+- G1: 新增 `gitee_api.py` — Gitee REST API v5 封装 (~60 行)，与 github_api.py 接口一致 ✅ 已修
+- G2: `config.py` 新增 `detect_platform()` — 双平台自动检测 (RELAY_REVIEW_PLATFORM → GITEE_TOKEN → git remote → 默认 github) ✅ 已修
+- G3: `config.py` `detect_repo_info` 支持 gitee.com URL 解析 (HTTPS + SSH) ✅ 已修
+- G4: `tools/_shared.py` 新增平台路由 — 根据 platform 选择 GitHubAPI 或 GiteeAPI ✅ 已修
+- G5: Gitee `create_review` 降级为 `create_comment` (Gitee 无 PR Review API) ✅ 已修
+- G6: Gitee `merge_pr` 一步自动合并 (Gitee 独有: PUT /pulls/{n}/merge) ✅ 已修
+- G7: 测试 30 → 46 个，新增 Gitee API + config 双平台测试 ✅ 已修
 
 **v9 修订 (并发审查合并):**
 
@@ -76,17 +86,19 @@ v5 changelog 声称了部分未在代码中体现的修复。v6 诚实标注。
 ```
 script/mcp-server/                      # 全部新建
 ├── server.py                           # JSON-RPC over stdin/stdout 入口
-├── config.py                           # 自动检测 GitHub token/repo + env var 配置
+├── config.py                           # 自动检测 GitHub/Gitee token/repo + env var 配置 (v10)
 ├── github_api.py                       # GitHub REST API 封装 (requests, ~30 loc)
+├── gitee_api.py                        # Gitee REST API v5 封装 (v10 新增)
 ├── tools/
 │   ├── __init__.py
-│   ├── _shared.py                      # get_api factory + 共享常量
+│   ├── _shared.py                      # get_api factory + 平台路由 (v10)
 │   ├── context.py                      # Tool 1: get_pr_context
 │   ├── status.py                       # Tool 2-3: get_review_status, get_phase_result
 │   └── post.py                         # Tool 4-5: post_phase_result, post_final_verdict
 ├── tests/
 │   ├── test_github_api.py              # github_api.py 单元测试 (mock requests)
-│   ├── test_config.py                  # config.py 单元测试 (mock git remote)
+│   ├── test_gitee_api.py               # gitee_api.py 单元测试 (v10 新增)
+│   ├── test_config.py                  # config.py 双平台检测测试 (v10)
 │   └── test_handlers.py                # 5 tool handler 单元测试 (mock API)
 ├── setup.sh                            # 自动检测 + 生成 MCP 配置 + 复制 Skill
 ├── requirements.txt                    # requests>=2.31
@@ -1112,6 +1124,18 @@ pip install -r script/mcp-server/requirements.txt
 | P4: 集成验证 | 1 | — | 0.5h |
 | **总计** | **14** | **19 个文件** | **~7h** |
 | **v9 修订** | 3 | post.py, status.py, test_handlers.py (修改) | ~1h |
+| **v10 修订** | 5 | gitee_api.py, config.py, _shared.py, test_gitee_api.py, test_config.py | ~1h |
+
+### v10 Gitee 平台支持 — 新增文件与函数
+
+| 文件 | 操作 | 行数 | 说明 |
+|------|:---:|:---:|------|
+| `gitee_api.py` | 新增 | ~60 | Gitee REST API v5 封装 |
+| `config.py` `detect_platform()` | 新增 | ~15 | 双平台自动检测 |
+| `config.py` `detect_token()` | 新增 | ~15 | 分平台 token 获取 |
+| `tools/_shared.py` `get_api()` | 修改 | +4 | 平台路由 |
+| `tests/test_gitee_api.py` | 新增 | ~60 | Gitee API 单元测试 |
+| `tests/test_config.py` | 修改 | +70 | 双平台配置测试 |
 
 ### v9 并发审查合并 — 新增函数
 
@@ -1121,13 +1145,14 @@ pip install -r script/mcp-server/requirements.txt
 | `_extract_findings_only` | post.py | ~10 | 提取纯 findings，去 header/footer |
 | `_merge_phase_comment` | post.py | ~25 | 合并追加到已有 Comment |
 
-### 实际新增文件（19 个）
+### 实际新增文件（19 + 2 = 21 个）
 
 ```
 script/mcp-server/
 ├── server.py              # JSON-RPC over stdin/stdout 入口
-├── config.py              # 自动检测 GitHub token/repo + env var 配置
+├── config.py              # 自动检测 GitHub/Gitee token/repo + env var 配置 (v10)
 ├── github_api.py          # GitHub REST API 封装 (requests, ~30 loc)
+├── gitee_api.py           # Gitee REST API v5 封装 (v10 新增)
 ├── setup.sh               # 自动检测 + 生成 MCP 配置 + 复制 Skill
 ├── relay-review-skill.md  # 完整 Skill 文件 (Phase 1/2/3 操作 + 错误恢复 + 轮询)
 ├── USAGE.md               # 使用指南
@@ -1136,22 +1161,24 @@ script/mcp-server/
 ├── __init__.py
 ├── tools/
 │   ├── __init__.py
-│   ├── _shared.py         # get_api(config) 工厂 (v7: 显式传参修复)
+│   ├── _shared.py         # get_api(config) 工厂 + 平台路由 (v10)
 │   ├── context.py         # Tool 1: get_pr_context
 │   ├── status.py          # Tool 2-3: get_review_status + get_phase_result
 │   └── post.py            # Tool 4-5: post_phase_result + post_final_verdict
 └── tests/
     ├── __init__.py
-    ├── test_config.py     # config 单元测试 (HTTPS/SSH remote 解析)
-    ├── test_github_api.py # API 单元测试 (初始化/get_pr/分页)
+    ├── test_config.py     # config 双平台检测 (v10: GitHub + Gitee)
+    ├── test_github_api.py # GitHub API 单元测试 (初始化/get_pr/分页)
+    ├── test_gitee_api.py  # Gitee API 单元测试 (v10 新增)
     ├── test_handlers.py   # 30 个测试覆盖 17 handler 场景 (v9: 并发审查合并)
     └── integration.sh     # 5 场景集成测试 (manual)
 ```
 
-### Git 提交历史（16 commits）
+### Git 提交历史（20 commits）
 
 ```
-de1bad4 Merge pull request #1 — PR merged ✅
+170fe95 feat: Gitee 平台支持 (方案A — 独立 API 封装)
+ef1007c docs: 计划文档 v8→v9 — 并发审查合并方案回写
 cea2cfa Add .claude/mcp.json — relay-review MCP server configuration
 61bce0f docs: 添加 MCP 配置说明到 USAGE.md
 54be6b5 status.py: improve error codes for get_review_status and get_phase_result
