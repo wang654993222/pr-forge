@@ -22,7 +22,9 @@ def tool_get_review_status(args, config):
     pr = args["pr_number"]; api = get_api(config)
     try: pr_data = api.get_pr(pr); comments = api.list_comments(pr)
     except GitHubAPIError as e:
-        return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
+        code = "AUTH_REQUIRED" if e.status_code in (401, 403) else \
+               "PR_NOT_FOUND" if e.status_code == 404 else "NETWORK_ERROR"
+        return {"ok": False, "error": {"code": code, "message": e.message}}
     current_sha = pr_data.get("head", {}).get("sha")
     phases = _build_phase_status(comments, current_sha)
     return {"ok": True, "data": _compute_overall(phases)}
@@ -81,7 +83,9 @@ def tool_get_phase_result(args, config):
     pr = args["pr_number"]; phase = args["phase"]; api = get_api(config)
     try: pr_data = api.get_pr(pr); comments = api.list_comments(pr)
     except GitHubAPIError as e:
-        return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
+        code = "AUTH_REQUIRED" if e.status_code in (401, 403) else \
+               "PR_NOT_FOUND" if e.status_code == 404 else "NETWORK_ERROR"
+        return {"ok": False, "error": {"code": code, "message": e.message}}
     current_sha = pr_data.get("head", {}).get("sha")
     for c in reversed(comments):
         body = c.get("body", "")
