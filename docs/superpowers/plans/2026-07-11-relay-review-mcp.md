@@ -1,4 +1,4 @@
-# Relay Review MCP — 实现计划 (v7 — 实施验证 + 计划代码 bug 回写)
+# Relay Review MCP — 实现计划 (v8 — 部署验证 + 多机协作回写)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
@@ -10,7 +10,14 @@
 
 **Tech Stack:** Python 3.9+, requests, typing.Optional；bash 4.0+；MCP JSON-RPC 2.0
 
-**v7 修订 (计划代码 bug 修复 — 实施中发现的 4 个问题):**
+**v8 修订 (部署验证 + 多机协作发现):**
+
+- D1: `settings.local.json` 与 `.claude/mcp.json` 的 MCP 配置重复 — 删除 `settings.local.json` 中的 `mcpServers`，`.claude/mcp.json` 作为唯一配置源 ✅ 已修
+- D2: `config.py` 错误消息提示 `GITHUB_REPOSITORY=owner/repo` 但代码未实现该环境变量回退 — 补充 `detect_repo_info` 空值后从 `GITHUB_REPOSITORY` 解析的 fallback ✅ 已修
+- D3: `post_final_verdict` 使用 `approve` 时 GitHub API 返回 422 "Can not approve your own pull request" — 这是 GitHub 自身限制而非代码 bug，文档已说明；跨机器审查时 approve 正常工作 ✅ 已记录
+- D4: 多机安装指南补充 — `.claude/mcp.json` + `~/.claude/settings.json` `enableAllProjectMcpServers` + `enabledMcpjsonServers` 三项配置缺一不可 ✅ 已记录
+
+**v7 修订 (计划代码 bug 修复 — 实施中发现的 5 个问题):**
 
 - B1: `_shared.py` `get_api()` 使用 `GitHubAPI(**config["github"])` — config["github"] 的 key 是 `repo_owner`/`repo_name` 但 GitHubAPI.\_\_init\_\_ 的形参是 `owner`/`repo`，参数名不匹配导致 TypeError ✅ 已修
 - B2: `status.py` `tool_get_phase_result` 调用 `_get_api(config)` — v4 已将 `_get_api` 抽取到 `_shared.py` 并重命名为 `get_api`，此处死代码引用未更新 ✅ 已修
@@ -832,6 +839,80 @@ echo "MANUAL: disconnect network and verify get_pr_context returns NETWORK_ERROR
 
 ---
 
+## 多机安装指南（v8 新增）
+
+在另一台电脑上安装 Relay Review MCP Server：
+
+### 1. 克隆仓库
+
+```bash
+git clone https://github.com/wang654993222/hsoft-data-manage.git
+cd hsoft-data-manage
+```
+
+### 2. 安装 Python 依赖
+
+```bash
+pip install -r script/mcp-server/requirements.txt
+```
+
+### 3. 创建 GitHub Personal Access Token
+
+1. 浏览器打开 https://github.com/settings/tokens/new
+2. Note: `relay-review-mcp`
+3. Expiration: No expiration
+4. 勾选 `repo` (Full control of private repositories)
+5. 点击 Generate token，复制生成的 `ghp_xxx...`
+
+### 4. 创建 `.claude/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "relay-review": {
+      "command": "python3",
+      "args": ["script/mcp-server/server.py"],
+      "cwd": "/path/to/hsoft-data-manage",
+      "env": {
+        "GITHUB_TOKEN": "你的ghp_token",
+        "GITHUB_REPOSITORY": "wang654993222/hsoft-data-manage"
+      }
+    }
+  }
+}
+```
+
+### 5. 配置 `~/.claude/settings.json`
+
+添加以下两项（三项配置缺一不可）：
+
+```json
+{
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": ["relay-review"]
+}
+```
+
+### 6. 重启 Claude Code Desktop
+
+重启后输入 `/mcp` 确认 relay-review 显示在项目级配置中。
+
+### 7. 验证
+
+在对话中说：
+
+> 用 get_pr_context 查询 PR #1 状态
+
+应返回 PR 的元数据。
+
+### 注意事项
+
+- **不要**在 `settings.local.json` 中重复配置 `mcpServers` — 单一来源：`.claude/mcp.json`
+- `post_final_verdict` 使用 `approve` 时需要审查者和 PR 作者是**不同人**（GitHub 限制：不能 approve 自己的 PR）
+- 两台电脑用同一个 repo 的不同 GitHub 账号 → 实现跨机器接力审查
+
+---
+
 ## 实施总结
 
 | Phase | 任务 | 新建文件 | 预计工时 |
@@ -841,4 +922,52 @@ echo "MANUAL: disconnect network and verify get_pr_context returns NETWORK_ERROR
 | P2: Skill + 测试 | 2 | relay-review-skill.md, test_handlers.py | 2h |
 | P3: Setup + 文档 | 2 | setup.sh, USAGE.md | 1h |
 | P4: 集成验证 | 1 | — | 0.5h |
-| **总计** | **12** | **12 个文件** | **~7h** |
+| **总计** | **14** | **19 个文件** | **~7h** |
+
+### 实际新增文件（19 个）
+
+```
+script/mcp-server/
+├── server.py              # JSON-RPC over stdin/stdout 入口
+├── config.py              # 自动检测 GitHub token/repo + env var 配置
+├── github_api.py          # GitHub REST API 封装 (requests, ~30 loc)
+├── setup.sh               # 自动检测 + 生成 MCP 配置 + 复制 Skill
+├── relay-review-skill.md  # 完整 Skill 文件 (Phase 1/2/3 操作 + 错误恢复 + 轮询)
+├── USAGE.md               # 使用指南
+├── requirements.txt       # requests>=2.31.0
+├── requirements-test.txt  # pytest>=8.0.0
+├── __init__.py
+├── tools/
+│   ├── __init__.py
+│   ├── _shared.py         # get_api(config) 工厂 (v7: 显式传参修复)
+│   ├── context.py         # Tool 1: get_pr_context
+│   ├── status.py          # Tool 2-3: get_review_status + get_phase_result
+│   └── post.py            # Tool 4-5: post_phase_result + post_final_verdict
+└── tests/
+    ├── __init__.py
+    ├── test_config.py     # config 单元测试 (HTTPS/SSH remote 解析)
+    ├── test_github_api.py # API 单元测试 (初始化/get_pr/分页)
+    ├── test_handlers.py   # 16 个测试覆盖 10 handler 场景
+    └── integration.sh     # 5 场景集成测试 (manual)
+```
+
+### Git 提交历史（16 commits）
+
+```
+de1bad4 Merge pull request #1 — PR merged ✅
+cea2cfa Add .claude/mcp.json — relay-review MCP server configuration
+61bce0f docs: 添加 MCP 配置说明到 USAGE.md
+54be6b5 status.py: improve error codes for get_review_status and get_phase_result
+963f8b2 计划文档 v6→v7: 回写实施中发现的 5 个代码 bug
+cb768be config.py: 补充 GITHUB_REPOSITORY=owner/repo 环境变量回退逻辑
+5f8b191 Task 2.4 + 文档: 集成测试脚本 + USAGE.md
+00cad9b Task 2.3: 测试 — 10 handler 单元测试 (全部通过)
+40d59c2 Task 2.1 + 2.2: setup.sh 引导脚本 + Skill 文件
+adb2468 Task 1.3: post.py — post_phase_result + post_final_verdict
+27124af Task 1.2: status.py — get_review_status + get_phase_result
+0e00769 Task 1.1: context.py — get_pr_context + _shared.py
+32a8b86 Task 0.5: server.py — MCP JSON-RPC over stdin/stdout 入口
+45bb998 Task 0.4: github_api.py — requests 实现 (~30 loc)
+b526ffe Task 0.3: config.py — 自动检测 (env var + gh CLI, 无 YAML)
+8c5b3cc Task 0.1: 项目结构初始化 + requirements
+```
