@@ -63,3 +63,4 @@ PYTHONPATH=script/mcp-server python3 -m pytest script/mcp-server/tests/test_hand
 # 全部测试
 PYTHONPATH=script/mcp-server python3 -m pytest script/mcp-server/tests/ -v
 ```
+
