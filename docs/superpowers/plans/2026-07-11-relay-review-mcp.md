@@ -234,6 +234,9 @@ def load_config() -> dict:
             "GitHub token not found. Set GITHUB_TOKEN env var or run 'gh auth login'."
         )
     owner, repo = detect_repo_info()
+    if (not owner or not repo) and "GITHUB_REPOSITORY" in os.environ:
+        parts = os.environ["GITHUB_REPOSITORY"].split("/")
+        if len(parts) >= 2: owner, repo = parts[-2], parts[-1]
     if not owner or not repo:
         raise RuntimeError(
             "Could not detect GitHub repo from git remote. Set GITHUB_REPOSITORY=owner/repo."
@@ -482,7 +485,9 @@ def tool_get_review_status(args, config):
     pr = args["pr_number"]; api = get_api(config)
     try: pr_data = api.get_pr(pr); comments = api.list_comments(pr)
     except GitHubAPIError as e:
-        return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
+        code = "AUTH_REQUIRED" if e.status_code in (401, 403) else \
+               "PR_NOT_FOUND" if e.status_code == 404 else "NETWORK_ERROR"
+        return {"ok": False, "error": {"code": code, "message": e.message}}
     current_sha = pr_data.get("head", {}).get("sha")
     phases = _build_phase_status(comments, current_sha)
     return {"ok": True, "data": _compute_overall(phases)}
@@ -541,7 +546,9 @@ def tool_get_phase_result(args, config):
     pr = args["pr_number"]; phase = args["phase"]; api = get_api(config)
     try: pr_data = api.get_pr(pr); comments = api.list_comments(pr)
     except GitHubAPIError as e:
-        return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
+        code = "AUTH_REQUIRED" if e.status_code in (401, 403) else \
+               "PR_NOT_FOUND" if e.status_code == 404 else "NETWORK_ERROR"
+        return {"ok": False, "error": {"code": code, "message": e.message}}
     current_sha = pr_data.get("head", {}).get("sha")
     for c in reversed(comments):
         body = c.get("body", "")
@@ -567,6 +574,7 @@ def tool_get_phase_result(args, config):
 # tools/post.py
 import re, os, json
 from github_api import GitHubAPI, GitHubAPIError
+from tools._shared import get_api
 
 PROJECT_ROOT = os.environ.get("PROJECT_ROOT", os.getcwd())
 
@@ -947,7 +955,7 @@ script/mcp-server/
     ├── __init__.py
     ├── test_config.py     # config 单元测试 (HTTPS/SSH remote 解析)
     ├── test_github_api.py # API 单元测试 (初始化/get_pr/分页)
-    ├── test_handlers.py   # 16 个测试覆盖 10 handler 场景
+    ├── test_handlers.py   # 21 个测试覆盖 10 handler 场景
     └── integration.sh     # 5 场景集成测试 (manual)
 ```
 
