@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "relay-review": {
+      "command": "python3",
+      "args": ["script/mcp-server/server.py"],
+      "cwd": "/Users/wangchenglong/IdeaProjects/host/hsoft-data-manage",
+      "env": {
+        "GITHUB_TOKEN": "REDACTED",
+        "GITHUB_REPOSITORY": "wang654993222/hsoft-data-manage"
+      }
+    }
+  }
+}
