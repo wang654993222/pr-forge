@@ -39,6 +39,9 @@ def load_config() -> dict:
             "GitHub token not found. Set GITHUB_TOKEN env var or run 'gh auth login'."
         )
     owner, repo = detect_repo_info()
+    if (not owner or not repo) and "GITHUB_REPOSITORY" in os.environ:
+        parts = os.environ["GITHUB_REPOSITORY"].split("/")
+        if len(parts) >= 2: owner, repo = parts[-2], parts[-1]
     if not owner or not repo:
         raise RuntimeError(
             "Could not detect GitHub repo from git remote. Set GITHUB_REPOSITORY=owner/repo."
