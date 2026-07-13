@@ -1,5 +1,6 @@
 # tools/post.py
 import re, os, json
+from datetime import datetime, timezone
 from github_api import GitHubAPI, GitHubAPIError
 from tools._shared import get_api
 
@@ -39,6 +40,57 @@ def _truncate_utf8_safe(text, max_bytes=59000):
     if last_nl > max_bytes // 2: truncated = truncated[:last_nl]
     return truncated.decode("utf-8", errors="replace"), True
 
+def _find_existing_phase_comment(api, pr_number, phase, sha):
+    """查找 PR 上是否已存在同 phase + 同 SHA 的 Comment。返回 comment 对象或 None。"""
+    try:
+        comments = api.list_comments(pr_number)
+    except GitHubAPIError:
+        return None
+    for c in comments:
+        body = c.get("body", "")
+        if f"<!-- review-phase: {phase} -->" in body and f"<!-- review-commit: {sha} -->" in body:
+            return c
+    return None
+
+def _extract_findings_only(body: str) -> str:
+    """从审查 body 中尝试提取纯 findings 部分，去掉三明治 header/footer。"""
+    # 尝试提取 ---REVIEW_START--- 和 ---REVIEW_END--- 之间的内容
+    m = re.search(r"---REVIEW_START---(.*?)---REVIEW_END---", body, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    # 退而求其次：去掉开头和结尾的 marker 行
+    lines = body.split("\n")
+    # 移除前几行 marker（<!-- review-phase/commit -->）
+    while lines and (lines[0].strip().startswith("<!--") or lines[0].strip() == ""):
+        lines.pop(0)
+    return "\n".join(lines).strip()
+
+def _merge_phase_comment(existing_body, new_body, new_author, phase, sha):
+    """将新审查结果追加到已有 Comment body 后面。"""
+    reviewer_count = 1
+    mc = re.search(r"<!-- reviewer-count: (\d+) -->", existing_body)
+    if mc:
+        reviewer_count = int(mc.group(1)) + 1
+    else:
+        reviewer_count = 2  # 原来 1 份 + 现在 1 份
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    append_section = f"""
+
+---
+## 🔀 补充审查 — {new_author} ({timestamp})
+
+{_extract_findings_only(new_body)}
+
+<!-- reviewer-count: {reviewer_count} -->
+<!-- merged: true -->
+"""
+    # 移除旧标记后重新插入
+    merged = re.sub(r"<!-- reviewer-count: \d+ -->\n?", "", existing_body)
+    merged = re.sub(r"<!-- merged: true -->\n?", "", merged)
+    merged += append_section
+    return merged
+
 def tool_post_phase_result(args, config):
     pr = args["pr_number"]; phase = args["phase"]
     body = args.get("body", ""); sha = args.get("sha", "unknown")
@@ -68,9 +120,27 @@ def tool_post_phase_result(args, config):
         return {"ok": True, "data": {"posted": False, "truncated": truncated, "original_bytes": orig_bytes, "warning": "dry_run"}}
 
     api = get_api(config)
+
+    # CAS 追加: 检测是否已有同 phase + 同 SHA 的 Comment
+    existing_comment = _find_existing_phase_comment(api, pr, phase, sha)
+    if existing_comment:
+        new_author = config.get("github", {}).get("repo_owner", "unknown")
+        merged_body = _merge_phase_comment(
+            existing_comment.get("body", ""), body, new_author, phase, sha
+        )
+        try:
+            resp = api.update_comment(existing_comment["id"], merged_body)
+            return {"ok": True, "data": {
+                "posted": True, "merged": True,
+                "url": resp.get("html_url"),
+                "merge_message": "检测到已有同 Phase + SHA 的审查结果，已自动合并追加"
+            }}
+        except GitHubAPIError as e:
+            return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
+
     try:
         resp = api.create_comment(pr, body)
-        return {"ok": True, "data": {"posted": True, "url": resp.get("html_url"), "truncated": truncated}}
+        return {"ok": True, "data": {"posted": True, "merged": False, "url": resp.get("html_url"), "truncated": truncated}}
     except GitHubAPIError as e:
         return {"ok": False, "error": {"code": "NETWORK_ERROR", "message": e.message}}
 
