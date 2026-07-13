@@ -30,24 +30,41 @@ def tool_get_review_status(args, config):
     return {"ok": True, "data": _compute_overall(phases)}
 
 def _build_phase_status(comments, current_sha):
-    phases = {1: None, 2: None, 3: None}
+    # phases 现在是 list of list — 每个 phase 可以有多个审查者
+    phases = {1: [], 2: [], 3: []}
     for c in comments:
         body = c.get("body", "")
         pm = re.search(r"<!-- review-phase: (\d) -->", body)
         sm = re.search(r"<!-- review-commit: ([a-f0-9]+) -->", body)
         if pm:
             p = int(pm.group(1)); sha = sm.group(1) if sm else None
-            phases[p] = {"sha": sha, "author": c.get("user", {}).get("login"),
-                "posted_at": c.get("created_at"), "url": c.get("html_url"), "body": body}
+            phases[p].append({
+                "sha": sha, "author": c.get("user", {}).get("login"),
+                "posted_at": c.get("created_at"), "url": c.get("html_url"), "body": body,
+                "comment_id": c.get("id")
+            })
     result = []
     for p in [1, 2, 3]:
-        v = phases[p]
-        if v:
-            expired = v["sha"] and current_sha and v["sha"] != current_sha
-            result.append({"phase": p, "status": "expired" if expired else "done",
-                "sha": v["sha"], "author": v["author"], "posted_at": v["posted_at"],
-                "url": v["url"], "reason": "SHA mismatch" if expired else None})
-        else: result.append({"phase": p, "status": "pending"})
+        entries = phases[p]
+        if entries:
+            # 取最新 entry 的 sha 作为主 sha
+            latest = entries[-1]
+            expired = latest["sha"] and current_sha and latest["sha"] != current_sha
+            entry = {
+                "phase": p,
+                "status": "expired" if expired else "done",
+                "sha": latest["sha"],
+                "author": latest["author"],
+                "posted_at": latest["posted_at"],
+                "url": latest["url"],
+                "reason": "SHA mismatch" if expired else None,
+                "reviewer_count": len(entries),
+                "contributors": [e["author"] for e in entries],
+                "merged": any("<!-- merged: true -->" in e.get("body", "") for e in entries),
+            }
+            result.append(entry)
+        else:
+            result.append({"phase": p, "status": "pending", "reviewer_count": 0})
     return result
 
 def _compute_overall(phases):
@@ -87,12 +104,38 @@ def tool_get_phase_result(args, config):
                "PR_NOT_FOUND" if e.status_code == 404 else "NETWORK_ERROR"
         return {"ok": False, "error": {"code": code, "message": e.message}}
     current_sha = pr_data.get("head", {}).get("sha")
+
+    # 收集所有匹配当前 SHA + phase 的 Comment（支持多人并发审查）
+    matching = []
     for c in reversed(comments):
         body = c.get("body", "")
         if f"<!-- review-phase: {phase} -->" in body and f"<!-- review-commit: {current_sha} -->" in body and "---REVIEW_START---" in body:
-            return {"ok": True, "data": {"found": True, "reason": "ok", "body": body,
-                "sha": current_sha, "posted_at": c.get("created_at"),
-                "author": c.get("user", {}).get("login"), "url": c.get("html_url")}}
+            matching.append({
+                "body": body,
+                "sha": current_sha,
+                "posted_at": c.get("created_at"),
+                "author": c.get("user", {}).get("login"),
+                "url": c.get("html_url"),
+                "comment_id": c.get("id"),
+            })
+
+    if matching:
+        # 如果有合并标记，用合并后的完整 body；否则取最新的
+        primary = matching[0]  # reversed 顺序，最新在前
+        return {"ok": True, "data": {
+            "found": True, "reason": "ok",
+            "count": len(matching),
+            "merged": "<!-- merged: true -->" in primary["body"],
+            "body": primary["body"],  # 合并后或最新的完整 body
+            "sha": current_sha,
+            "posted_at": primary["posted_at"],
+            "author": primary["author"],
+            "url": primary["url"],
+            "contributors": [m["author"] for m in matching],
+            "all_results": matching,  # 所有审查者的单独结果
+        }}
+
+    # 没有完全匹配的，查找 SHA 不匹配的旧结果
     for c in reversed(comments):
         body = c.get("body", "")
         if f"<!-- review-phase: {phase} -->" in body and "---REVIEW_START---" in body:
