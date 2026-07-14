@@ -56,10 +56,9 @@
 
 1. `get_review_status(N)` — 确认所有 Phase 完成，`overall == "complete"`
 2. `post_final_verdict(N, verdict=<auto>, summary=<generated>)` — 发布最终 Review
-3. `merge_pr(N, merge_method="squash", dry_run=true)` — 检查可合并性
-   - 审查完成预检未通过 → 返回 `MERGE_NOT_ALLOWED`，修复后重试
-4. **🛑 展示 dry_run 结果和最终审查结论，等待用户确认合并（禁止自动合并）**
-5. 用户明确确认后: `merge_pr(N, merge_method="squash")` — 执行合并
+3. `merge_pr(N, merge_method="squash")` — 合并 PR 到主分支
+   - 建议先 `dry_run=true` 检查可合并性
+   - 内置审查完成预检，未完成会自动拒绝
 
 ## 完整工作流 (v11)
 
