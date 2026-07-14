@@ -1,6 +1,6 @@
 # gitee_api.py — Gitee REST API v5 封装
 # 与 github_api.py 接口完全一致，方便 tools/ 层无感切换
-import requests, json
+import base64, requests, json
 from urllib.parse import urlencode
 
 class GiteeAPIError(Exception):
@@ -13,12 +13,12 @@ class GiteeAPI:
         self.session = requests.Session()
         self.session.headers.update({
             "Content-Type": "application/json;charset=UTF-8",
-            "User-Agent": "relay-review-mcp/1.0",
+            "User-Agent": "pr-flow/2.0",
         })
         self.token = token
         self.base = f"https://gitee.com/api/v5/repos/{owner}/{repo}"
 
-    def _request(self, method, path, **kwargs):
+    def _request(self, method, path, raw=False, **kwargs):
         url = f"{self.base}/{path}"
         # Gitee 用 query param 认证，不是 header
         if "?" in url:
@@ -29,7 +29,13 @@ class GiteeAPI:
         kwargs.pop("params", None)
         resp = self.session.request(method, url, timeout=30, **kwargs)
         if not resp.ok:
-            raise GiteeAPIError(resp.status_code, resp.json().get("message", resp.text))
+            msg = resp.text[:200]
+            ct = resp.headers.get("Content-Type", "")
+            if "application/json" in ct:
+                try: msg = resp.json().get("message", resp.text[:200])
+                except (ValueError, KeyError): pass
+            raise GiteeAPIError(resp.status_code, msg)
+        if raw: return resp.text
         return resp.json() if resp.text else {}
 
     def get_pr(self, pr_number):
@@ -61,3 +67,19 @@ class GiteeAPI:
         """Gitee 独有：直接合并 PR"""
         return self._request("PUT", f"pulls/{pr_number}/merge",
             json={"merge_method": merge_method, "prune_source_branch": delete_branch})
+
+    # v11: 新增方法
+    def get_pr_diff(self, pr_number):
+        return self._request("GET", f"pulls/{pr_number}.diff", raw=True)
+
+    def get_file_content(self, path, ref=None):
+        p = f"contents/{path}"
+        if ref: p += f"?ref={ref}"
+        data = self._request("GET", p)
+        if data.get("encoding") == "base64" and data.get("content"):
+            decoded = base64.b64decode(data["content"])
+            try:
+                return {"content": decoded.decode("utf-8"), "binary": False}
+            except UnicodeDecodeError:
+                return {"content": data["content"], "binary": True}
+        return {"content": data.get("content", ""), "binary": False}

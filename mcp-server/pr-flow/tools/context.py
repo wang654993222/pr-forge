@@ -1,6 +1,7 @@
 # tools/context.py
 import os
 from github_api import GitHubAPI, GitHubAPIError
+from gitee_api import GiteeAPIError
 from tools._shared import get_api
 
 PROJECT_ROOT = os.environ.get("PROJECT_ROOT", os.getcwd())
@@ -30,7 +31,7 @@ def tool_get_pr_context(args, config):
             "created_at": data.get("created_at"),
             "updated_at": data.get("updated_at"),
         }}
-    except GitHubAPIError as e:
+    except (GitHubAPIError, GiteeAPIError) as e:
         code = "AUTH_REQUIRED" if e.status_code in (401, 403) else \
                "PR_NOT_FOUND" if e.status_code == 404 else "NETWORK_ERROR"
         return {"ok": False, "error": {"code": code, "message": e.message}}

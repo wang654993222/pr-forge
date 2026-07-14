@@ -14,8 +14,9 @@
 # 13. v9: get_phase_result multi-result (count > 1)
 
 from unittest.mock import patch, MagicMock
-from tools.status import _build_phase_status, _compute_overall, _derive_phase3_needed, tool_get_phase_result
-from tools.post import (tool_post_phase_result, tool_post_final_verdict, _truncate_utf8_safe,
+from tools._shared import _build_phase_status, _compute_overall, truncate_utf8_safe
+from tools.status import _derive_phase3_needed, tool_get_phase_result
+from tools.post import (tool_post_phase_result, tool_post_final_verdict,
                           _find_existing_phase_comment, _merge_phase_comment, _extract_findings_only)
 
 
@@ -127,7 +128,7 @@ def test_derive_phase3_needed_no_sql():
 def test_post_phase_result_dry_run():
     result = tool_post_phase_result(
         {"pr_number": 1, "phase": 1, "body": "test body", "sha": "abc123", "dry_run": True},
-        {"github": {"token": "fake", "repo_owner": "o", "repo_name": "r"}, "output": {"dir": "script/review-output"}}
+        {"github": {"token": "fake", "repo_owner": "o", "repo_name": "r"}, "output": {"dir": "mcp-server/pr-flow/review-output"}}
     )
     assert result["ok"] == True
     assert result["data"]["posted"] == False
@@ -138,7 +139,7 @@ def test_post_phase_result_dry_run():
 def test_post_phase_result_missing_file():
     result = tool_post_phase_result(
         {"pr_number": 1, "phase": 1, "from_local_file": True},
-        {"github": {"token": "fake", "repo_owner": "o", "repo_name": "r"}, "output": {"dir": "script/review-output"}}
+        {"github": {"token": "fake", "repo_owner": "o", "repo_name": "r"}, "output": {"dir": "mcp-server/pr-flow/review-output"}}
     )
     assert result["ok"] == False
     assert result["error"]["code"] == "NO_LOCAL_RESULT"
@@ -154,20 +155,20 @@ def test_post_final_verdict_invalid():
     assert result["error"]["code"] == "INVALID_VERDICT"
 
 
-# 7. _truncate_utf8_safe: small text → not truncated
+# 7. truncate_utf8_safe: small text → not truncated
 def test_truncate_utf8_safe_small():
     text = "hello world"
-    result, truncated = _truncate_utf8_safe(text)
-    assert truncated == False
+    result, trunc = truncate_utf8_safe(text)
+    assert trunc == False
     assert result == text
 
 
-# 8. _truncate_utf8_safe: large text → truncated
+# 8. truncate_utf8_safe: large text → truncated
 def test_truncate_utf8_safe_large():
     # create text > 59000 bytes
     text = "x" * 100000
-    result, truncated = _truncate_utf8_safe(text)
-    assert truncated == True
+    result, trunc = truncate_utf8_safe(text)
+    assert trunc == True
     assert len(result.encode("utf-8")) <= 59000
 
 
@@ -175,7 +176,7 @@ def test_truncate_utf8_safe_large():
 def test_post_phase_result_sha_mismatch():
     result = tool_post_phase_result(
         {"pr_number": 1, "phase": 1, "body": "<!-- review-commit: aabbcc -->\nreview", "sha": "ddeeff"},
-        {"github": {"token": "fake", "repo_owner": "o", "repo_name": "r"}, "output": {"dir": "script/review-output"}}
+        {"github": {"token": "fake", "repo_owner": "o", "repo_name": "r"}, "output": {"dir": "mcp-server/pr-flow/review-output"}}
     )
     assert result["ok"] == False
     assert result["error"]["code"] == "SHA_MISMATCH"
@@ -299,7 +300,7 @@ def test_post_phase_result_cas_merge(mock_merge, mock_find):
     with patch('tools.post.get_api', return_value=mock_api):
         result = tool_post_phase_result(
             {"pr_number": 1, "phase": 1, "body": "new review", "sha": "abc123"},
-            {"github": {"token": "fake", "repo_owner": "bob", "repo_name": "r"}, "output": {"dir": "script/review-output"}}
+            {"github": {"token": "fake", "repo_owner": "bob", "repo_name": "r"}, "output": {"dir": "mcp-server/pr-flow/review-output"}}
         )
     assert result["ok"] == True
     assert result["data"]["merged"] == True

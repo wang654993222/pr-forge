@@ -101,6 +101,6 @@ def load_config() -> dict:
     return {
         "github": {"token": token, "repo_owner": owner, "repo_name": repo},
         "platform": platform,
-        "output": {"dir": os.environ.get("REVIEW_OUTPUT_DIR", "script/review-output")},
+        "output": {"dir": os.environ.get("REVIEW_OUTPUT_DIR", "mcp-server/pr-flow/review-output")},
         "mcp": {"log_level": os.environ.get("REVIEW_LOG_LEVEL", "info")},
     }

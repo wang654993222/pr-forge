@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "=== Relay Review MCP Setup ==="
+echo "=== pr-flow MCP Setup ==="
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 echo "Project root: $PROJECT_ROOT"
 
@@ -11,9 +11,9 @@ pip install -r "$(dirname "$0")/requirements.txt" 2>/dev/null || echo "⚠ pip i
 MCP_JSON=$(cat <<EOF
 {
   "mcpServers": {
-    "relay-review": {
+    "pr-flow": {
       "command": "python3",
-      "args": ["script/mcp-server/server.py"],
+      "args": ["mcp-server/pr-flow/server.py"],
       "cwd": "$PROJECT_ROOT"
     }
   }
@@ -25,8 +25,8 @@ echo "=== Add to .claude/settings.local.json or .claude/mcp.json ==="
 echo "$MCP_JSON"
 
 # 3. Skill 文件复制
-SKILL_SRC="$PROJECT_ROOT/script/mcp-server/relay-review-skill.md"
-SKILL_DST="$HOME/.claude/skills/relay-review.md"
+SKILL_SRC="$PROJECT_ROOT/mcp-server/pr-flow/docs/pr-flow.md"
+SKILL_DST="$HOME/.claude/skills/pr-flow.md"
 if [ -f "$SKILL_SRC" ]; then
     cp "$SKILL_SRC" "$SKILL_DST" 2>/dev/null && echo "✅ Skill copied to $SKILL_DST" || echo "⚠ Please manually copy $SKILL_SRC → $SKILL_DST"
 fi

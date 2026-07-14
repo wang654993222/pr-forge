@@ -1,10 +1,10 @@
-# Relay Review MCP — 多机安装详细教程
+# pr-flow — 多机安装详细教程
 
-> 最后更新: 2026-07-13
+> 最后更新: 2026-07-14 | 版本: 2.0.0
 
 ## 概述
 
-Relay Review MCP Server 是一个通过 GitHub PR Comment 实现跨机器代码接力审查的系统。两台电脑（机器 A 和机器 B）通过 GitHub PR Comment 中的 HTML marker 进行接力，所有审查结果持久化在 PR 评论中，互相可见。
+pr-flow 是一个通过 GitHub/Gitee PR Comment 实现跨机器代码接力审查的系统，支持 **审查 → 修复 → 推送 → 再审查 → 合并** 完整闭环。
 
 ## 前置条件
 
@@ -37,7 +37,7 @@ pip install requests
 
 > 或者从 requirements.txt 安装:
 > ```bash
-> pip install -r script/mcp-server/requirements.txt
+> pip install -r mcp-server/pr-flow/requirements.txt
 > ```
 
 验证安装:
@@ -54,7 +54,7 @@ python3 -c "import requests; print('requests', requests.__version__)"
 
 > 如果你需要自己创建新 Token:
 > 1. 浏览器打开 https://github.com/settings/tokens/new
-> 2. Note: `relay-review-mcp-machine-b`
+> 2. Note: `pr-flow-machine-b`
 > 3. Expiration: No expiration
 > 4. 勾选 `repo`
 > 5. 点击 Generate token，复制生成的 `ghp_xxx...`
@@ -72,9 +72,9 @@ mkdir -p .claude
 ```json
 {
   "mcpServers": {
-    "relay-review": {
+    "pr-flow": {
       "command": "python3",
-      "args": ["script/mcp-server/server.py"],
+      "args": ["mcp-server/pr-flow/server.py"],
       "cwd": "/你的实际路径/hsoft-data-manage",
       "env": {
         "GITHUB_TOKEN": "REDACTED",
@@ -98,7 +98,7 @@ mkdir -p .claude
 ```json
 {
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["relay-review"]
+  "enabledMcpjsonServers": ["pr-flow"]
 }
 ```
 
@@ -107,38 +107,38 @@ mkdir -p .claude
 ```json
 {
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["relay-review"]
+  "enabledMcpjsonServers": ["pr-flow"]
 }
 ```
 
 三项配置缺一不可：
 | 配置 | 位置 | 作用 |
 |------|------|------|
-| `mcpServers.relay-review` | `.claude/mcp.json` | 定义 relay-review MCP Server |
+| `mcpServers.pr-flow` | `.claude/mcp.json` | 定义 pr-flow MCP Server |
 | `enableAllProjectMcpServers: true` | `~/.claude/settings.json` | 启用项目级 MCP Server |
-| `enabledMcpjsonServers: ["relay-review"]` | `~/.claude/settings.json` | 允许 relay-review 启动 |
+| `enabledMcpjsonServers: ["pr-flow"]` | `~/.claude/settings.json` | 允许 pr-flow 启动 |
 
 ### 步骤 6: 验证安装
 
 ```bash
 # 1. 验证 Python 环境
 cd hsoft-data-manage
-PYTHONPATH=script/mcp-server python3 -m pytest script/mcp-server/tests/ -q
-# 预期输出: 21 passed
+PYTHONPATH=mcp-server/pr-flow python3 -m pytest mcp-server/pr-flow/tests/ -q
+# 预期输出: 61 passed
 
 # 2. 验证 MCP Server 能连接 GitHub API
 GITHUB_TOKEN=REDACTED \
 GITHUB_REPOSITORY=wang654993222/hsoft-data-manage \
-PYTHONPATH=script/mcp-server \
+PYTHONPATH=mcp-server/pr-flow \
 python3 -c "
 import subprocess, json
 proc = subprocess.Popen(
-    ['python3', 'script/mcp-server/server.py'],
+    ['python3', 'mcp-server/pr-flow/server.py'],
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     env={
         'GITHUB_TOKEN':'REDACTED',
         'GITHUB_REPOSITORY':'wang654993222/hsoft-data-manage',
-        'PYTHONPATH':'script/mcp-server',
+        'PYTHONPATH':'mcp-server/pr-flow',
         'PATH':'/usr/bin:/usr/local/bin:/opt/homebrew/bin',
     },
     text=True
@@ -163,7 +163,7 @@ for l in out.strip().split('\n'):
 关闭 Claude Code Desktop 并重新打开。
 
 验证 MCP 是否加载：
-- 输入 `/mcp` → 应看到 `relay-review` 出现在项目级配置中
+- 输入 `/mcp` → 应看到 `pr-flow` 出现在项目级配置中
 - 输入 "查询 PR #1 状态" → 应返回 PR 元数据
 
 ---
@@ -224,15 +224,26 @@ for l in out.strip().split('\n'):
 
 ---
 
-## 5 个 MCP Tool 参考
+## 9 个 MCP Tool 参考
+
+### v10 (审查)
 
 | # | Tool | 参数 | 功能 |
 |---|------|------|------|
 | 1 | `get_pr_context` | `pr_number` | 拉取 PR 元数据 (title/state/draft/SHA/branch/author) |
 | 2 | `get_review_status` | `pr_number` | 构建 Phase 1/2/3 审查状态矩阵 + next action |
-| 3 | `get_phase_result` | `pr_number`, `phase` | 精确提取 Phase N 的审查结果 (SHA 匹配) |
-| 4 | `post_phase_result` | `pr_number`, `phase`, `body`, `sha`, `dry_run?`, `from_local_file?` | 发布审查结果到 PR Comment (65K 截断) |
+| 3 | `get_phase_result` | `pr_number`, `phase` | 精确提取 Phase N 的审查结果 (SHA 匹配 + 多审查者) |
+| 4 | `post_phase_result` | `pr_number`, `phase`, `body`, `sha`, `dry_run?`, `from_local_file?` | 发布审查结果到 PR Comment (65K 截断 + CAS 合并) |
 | 5 | `post_final_verdict` | `pr_number`, `verdict`, `summary` | 发布最终 PR Review (approve/request_changes/comment) |
+
+### v11 (代码操作)
+
+| # | Tool | 参数 | 功能 |
+|---|------|------|------|
+| 6 | `get_pr_diff` | `pr_number`, `max_bytes?` | 获取 PR unified diff |
+| 7 | `get_file_content` | `path`, `ref?` | 获取仓库文件内容 (支持二进制检测) |
+| 8 | `commit_and_push` | `message`, `branch`, `pr_number?`, `files?`, `dry_run?` | 提交修复并推送到 PR 分支 |
+| 9 | `merge_pr` | `pr_number`, `merge_method?`, `delete_branch?`, `dry_run?` | 合并 PR 到主分支 (内置审查完成预检) |
 
 ---
 
@@ -241,9 +252,9 @@ for l in out.strip().split('\n'):
 ### MCP Server 未加载
 
 1. 确认 `.claude/mcp.json` 中的 `cwd` 路径正确: `pwd`
-2. 确认 `~/.claude/settings.json` 中有 `enableAllProjectMcpServers: true` 和 `enabledMcpjsonServers: ["relay-review"]`
+2. 确认 `~/.claude/settings.json` 中有 `enableAllProjectMcpServers: true` 和 `enabledMcpjsonServers: ["pr-flow"]`
 3. 重启 Claude Code Desktop
-4. 输入 `/mcp` 查看 relay-review 状态
+4. 输入 `/mcp` 查看 pr-flow 状态
 5. 如果状态为 error，查看错误信息
 
 ### GitHub Token 无效
