@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Relay Review MCP Server — JSON-RPC over stdin/stdout"""
+"""pr-flow MCP Server — JSON-RPC over stdin/stdout"""
 import json, sys, os, traceback
 sys.path.insert(0, os.path.dirname(__file__))
 from config import load_config
 from tools.context import register_context_tools
 from tools.status import register_status_tools
 from tools.post import register_post_tools
+from tools.code import register_code_tools
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 
 def main():
     config = load_config()
     tools = _build_tool_registry()
-    _log(f"Relay Review MCP v{VERSION} starting", "INFO")
+    _log(f"pr-flow v{VERSION} starting", "INFO")
 
     for line in sys.stdin:
         line = line.strip()
@@ -23,7 +24,7 @@ def main():
         method = request.get("method", ""); rid = request.get("id")
         if method == "initialize":
             _send_response(rid, {"protocolVersion": "2024-11-05",
-                "serverInfo": {"name": "relay-review-mcp", "version": VERSION},
+                "serverInfo": {"name": "pr-flow", "version": VERSION},
                 "capabilities": {"tools": {}}})
         elif method == "notifications/initialized": pass
         elif method == "tools/list":
@@ -33,13 +34,14 @@ def main():
             args = request.get("params", {}).get("arguments", {})
             _handle_tool_call(rid, name, args, tools, config)
         else: _send_error(rid, -32601, f"Method not found: {method}")
-    _log("Relay Review MCP exiting", "INFO")
+    _log("pr-flow exiting", "INFO")
 
 def _build_tool_registry():
     r = {}
     register_context_tools(r)
     register_status_tools(r)
     register_post_tools(r)
+    register_code_tools(r)
     return r
 
 def _handle_tool_call(rid, name, args, registry, config):
@@ -69,6 +71,6 @@ def _send_error(rid, code, message):
     sys.stdout.flush()
 
 def _log(msg, level="INFO"):
-    sys.stderr.write(f"[{level}] relay-review-mcp: {msg}\n"); sys.stderr.flush()
+    sys.stderr.write(f"[{level}] pr-flow: {msg}\n"); sys.stderr.flush()
 
 if __name__ == "__main__": main()

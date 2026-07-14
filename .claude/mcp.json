@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "relay-review": {
+    "pr-flow": {
       "command": "python3",
-      "args": ["script/mcp-server/server.py"],
+      "args": ["mcp-server/pr-flow/server.py"],
       "cwd": "/Users/wangchenglong/IdeaProjects/host/hsoft-data-manage",
       "env": {
         "GITHUB_TOKEN": "REDACTED",

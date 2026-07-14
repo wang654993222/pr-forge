@@ -3,7 +3,7 @@
 # 前置: 真实 PR #42 存在于 GitHub
 # 注意: 需要设置 GITHUB_TOKEN env var 才能执行真实场景
 
-echo "=== 集成测试: Relay Review MCP ==="
+echo "=== 集成测试: pr-flow ==="
 echo ""
 
 SERVER_PY="$(dirname "$0")/../server.py"
