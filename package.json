@@ -1,0 +1,28 @@
+{
+  "name": "pr-forge",
+  "version": "3.0.3",
+  "description": "AI 代码变更安全网关 — Agent 修改代码必须走 PR 审查，验证通过后方可合并",
+  "main": "src/server.js",
+  "bin": {
+    "pr-forge": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "keywords": [
+    "mcp",
+    "pr",
+    "code-review",
+    "safety",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "src/",
+    "README.md"
+  ]
+}
