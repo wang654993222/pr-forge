@@ -263,7 +263,7 @@ function readlineFromStdin() {
         chunks.push(chunk.toString());
         const data = chunks.join('');
         const lines = data.split('\n');
-        chunks.splice(0, chunks.length, ...lines.slice(0, -1));
+        chunks.splice(0, chunks.length, lines[lines.length - 1]);
         if (lines.length > 1) {
           for (const line of lines.slice(0, -1)) {
             if (line.trim()) yield line.trim();
