@@ -1,0 +1,11 @@
+{
+  "version": "3.0",
+  "timeout": 300,
+  "phases": [
+    {
+      "id": "verify-1",
+      "name": "Java (Maven) (hsoft-data-manage/backend/)",
+      "check": "cd hsoft-data-manage/backend && mvn compile -q && mvn test"
+    }
+  ]
+}
