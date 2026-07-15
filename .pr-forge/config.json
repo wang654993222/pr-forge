@@ -6,6 +6,11 @@
       "id": "verify-1",
       "name": "Java (Maven) (hsoft-data-manage/backend/)",
       "check": "cd hsoft-data-manage/backend && mvn compile -q && mvn test"
+    },
+    {
+      "id": "verify-2",
+      "name": "Node.js (hsoft-data-manage/frontend/)",
+      "check": "cd hsoft-data-manage/frontend && npm run lint && npm test"
     }
   ]
 }
