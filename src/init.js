@@ -37,14 +37,14 @@ function generateConfig(projectRoot, defaultPhases) {
     phases: defaultPhases || [],
   };
 
-  const prFlowDir = path.join(projectRoot, '.pr-forge');
-  fs.mkdirSync(prFlowDir, { recursive: true });
+  const prForgeDir = path.join(projectRoot, '.pr-forge');
+  fs.mkdirSync(prForgeDir, { recursive: true });
 
-  const configPath = path.join(prFlowDir, 'config.json');
+  const configPath = path.join(prForgeDir, 'config.json');
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 
   const hash = createHash('sha256').update(JSON.stringify(config)).digest('hex');
-  fs.writeFileSync(path.join(prFlowDir, '.approved'), hash);
+  fs.writeFileSync(path.join(prForgeDir, '.approved'), hash);
 
   return config;
 }
@@ -78,7 +78,7 @@ function generateMcpJson(projectRoot, packageName) {
         command: 'npx',
         args: ['-y', packageName || 'pr-forge'],
         env: {
-          PR_FLOW_TOKEN: readCredentials()?.token || '',
+          PR_FORGE_TOKEN: readCredentials()?.token || '',
         },
       },
     },

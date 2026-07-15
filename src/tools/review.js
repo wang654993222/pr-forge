@@ -1,12 +1,12 @@
 import { error } from '../error-codes.js';
 
-const PR_FLOW_CHECK_RUN_PREFIX = 'pr-forge/';
+const PR_FORGE_CHECK_RUN_PREFIX = 'pr-forge/';
 
 function getPhaseCheckRuns(checkRuns) {
   const all = checkRuns?.check_runs || [];
   return {
     phases: all
-      .filter((cr) => cr.name.startsWith(PR_FLOW_CHECK_RUN_PREFIX) && cr.name !== 'pr-forge/conclusion'),
+      .filter((cr) => cr.name.startsWith(PR_FORGE_CHECK_RUN_PREFIX) && cr.name !== 'pr-forge/conclusion'),
     conclusion: all.find((cr) => cr.name === 'pr-forge/conclusion') || null,
   };
 }
@@ -188,7 +188,7 @@ async function get_review_status(params, platform) {
 
   const phases = {};
   for (const cr of phaseCheckRuns) {
-    const phaseId = cr.name.replace(PR_FLOW_CHECK_RUN_PREFIX, '');
+    const phaseId = cr.name.replace(PR_FORGE_CHECK_RUN_PREFIX, '');
     const shaVerified = cr.head_sha === currentSha;
     phases[phaseId] = {
       conclusion: cr.conclusion,

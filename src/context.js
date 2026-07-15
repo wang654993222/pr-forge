@@ -32,7 +32,7 @@ function getCurrentBranch() {
 }
 
 function getToken(env) {
-  return env.PR_FLOW_TOKEN || env.GITHUB_TOKEN || env.GITEE_TOKEN || null;
+  return env.PR_FORGE_TOKEN || env.GITHUB_TOKEN || env.GITEE_TOKEN || null;
 }
 
 function getPlatformInfo(env) {

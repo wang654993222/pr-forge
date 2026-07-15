@@ -2,7 +2,7 @@ const ErrorCode = {
   AUTH_REQUIRED: {
     code: 'AUTH_REQUIRED',
     message: 'Token 无效或未配置',
-    recovery: '运行 pr-forge init 重新配置 token，或检查环境变量 PR_FLOW_TOKEN',
+    recovery: '运行 pr-forge init 重新配置 token，或检查环境变量 PR_FORGE_TOKEN',
   },
   PR_NOT_FOUND: {
     code: 'PR_NOT_FOUND',
