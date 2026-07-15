@@ -1,6 +1,6 @@
 {
   "name": "pr-forge",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "AI 代码变更安全网关 — Agent 修改代码必须走 PR 审查，验证通过后方可合并",
   "main": "src/server.js",
   "bin": {
