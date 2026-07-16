@@ -127,42 +127,51 @@ class PrFlowServer {
   constructor() {
     this.projectRoot = getProjectRoot();
     this.platformInfo = getPlatformInfo(process.env);
-    this.platform = this.platformInfo ? resolvePlatform(process.env) : null;
+    this.platform = null; // lazy init: resolvePlatform is async for App tokens
     this.config = loadConfig(this.projectRoot);
+  }
+
+  async resolvePlatform() {
+    if (!this._platformResolved) {
+      this._platformResolved = true;
+      this.platform = this.platformInfo ? await resolvePlatform(process.env) : null;
+    }
+    return this.platform;
   }
 
   async handleToolCall(name, params) {
     const env = process.env;
+    const platform = await this.resolvePlatform();
 
     switch (name) {
       case 'get_pr_context':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await get_pr_context(params, this.platform);
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        return await get_pr_context(params, platform);
 
       case 'get_review_status':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await get_review_status(params, this.platform);
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        return await get_review_status(params, platform);
 
       case 'get_pr_diff':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await get_pr_diff(params, this.platform);
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        return await get_pr_diff(params, platform);
 
       case 'get_file_content':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await get_file_content(params, this.platform);
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        return await get_file_content(params, platform);
 
       case 'commit_and_push': {
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
         const git = { execSync };
-        return await commit_and_push(params, git, this.platform);
+        return await commit_and_push(params, git, platform);
       }
 
       case 'merge_pr':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await merge_pr(params, this.platform);
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        return await merge_pr(params, platform);
 
       case 'run_pr_checks': {
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
         const context = {
           projectRoot: this.projectRoot,
           verifyConfig: () => verifyConfig(this.projectRoot),
@@ -170,15 +179,15 @@ class PrFlowServer {
           releaseLock: () => releaseLock(this.projectRoot, params.pr_number),
         };
         const git = { execSync };
-        return await run_pr_checks(params, this.config, this.platform, context, git);
+        return await run_pr_checks(params, this.config, platform, context, git);
       }
 
       case 'set_conclusion':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await set_conclusion(params, this.platform);
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        return await set_conclusion(params, platform);
 
       case 'get_review_plan': {
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
         // Handle auto-detect (no pr_number/branch)
         let resolvedParams = { ...params };
         if (!resolvedParams.pr_number && !resolvedParams.branch) {
@@ -188,7 +197,7 @@ class PrFlowServer {
           } else {
             // Fallback: list open PRs, get latest
             try {
-              const prs = await this.platform.listPRs('open');
+              const prs = await platform.listPRs('open');
               if (prs.length > 0) {
                 resolvedParams.pr_number = prs[0].number;
               } else {
@@ -199,7 +208,7 @@ class PrFlowServer {
             }
           }
         }
-        return await get_review_plan(resolvedParams, this.platform, this.config);
+        return await get_review_plan(resolvedParams, platform, this.config);
       }
 
       default:
