@@ -47,6 +47,18 @@ async function commit_and_push(params, gitOrExec, platform) {
   }
 
   try {
+    // Checkout target branch first to avoid detached HEAD
+    try {
+      git.execSync(`git checkout ${escapeShellArg(targetBranch)}`);
+    } catch {
+      // Branch might not exist locally, try to create from origin
+      try {
+        git.execSync(`git checkout -b ${escapeShellArg(targetBranch)} origin/${escapeShellArg(targetBranch)}`);
+      } catch {
+        return error('BRANCH_MISMATCH');
+      }
+    }
+
     if (files && files.length > 0) {
       for (const f of files) {
         if (!sanitizePath(f)) {
