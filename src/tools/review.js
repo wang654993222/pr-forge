@@ -2,6 +2,14 @@ import { error } from '../error-codes.js';
 
 const PR_FORGE_CHECK_RUN_PREFIX = 'pr-forge/';
 
+function getPhaseCheckRuns(checkRuns) {
+  const all = checkRuns?.check_runs || [];
+  return {
+    phases: all
+      .filter((cr) => cr.name.startsWith(PR_FORGE_CHECK_RUN_PREFIX) && cr.name !== 'pr-forge/conclusion'),
+    conclusion: all.find((cr) => cr.name === 'pr-forge/conclusion') || null,
+  };
+}
 
 async function get_review_plan(params, platform, config) {
   let { pr_number, branch } = params || {};
@@ -14,7 +22,7 @@ async function get_review_plan(params, platform, config) {
         : `${platform.owner}:${branch}`;
       const prs = await platform.listPRs("open", head);
       if (prs.length > 0) {
-        pr_number = prs[0].number;
+        pr_number = prs[0].number
       }
     } catch {
       // Fall through to getPR which will return a proper error
@@ -23,8 +31,8 @@ async function get_review_plan(params, platform, config) {
 
   if (!platform) {
     return {
-      ok: true,
-      pr: null,
+      ok: true
+      pr: null
       prerequisites: { config_exists: !!config, git_clean: true, token_valid: false },
       phases: [],
       conclusion_status: 'not_set',
