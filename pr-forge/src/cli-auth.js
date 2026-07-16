@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 // pr-forge auth — PAT → GitHub App 升级专用
 // 新用户请使用: npx pr-forge init
 import { randomBytes } from 'node:crypto';
@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { execSync } from 'node:child_process';
 import {
   saveCredentials, readCredentials,
-  generateMcpJson, generateCodexToml,
+  generateMcpJson, generateCodexMcpJson,
 } from './init.js';
 import { createAppJWT, validateApp } from './platforms/github.js';
 
@@ -64,7 +64,7 @@ async function authCommand(_args) {
     if (jwt && await validateApp(jwt)) {
       console.log(`✓ App #${existing.appId} 有效，直接复用\n`);
       generateMcpJson(projectRoot, 'pr-forge'); console.log('✓ .claude/mcp.json 已更新');
-      generateCodexToml('pr-forge'); console.log('✓ Codex config.toml 已生成');
+      generateCodexMcpJson('pr-forge'); console.log('✓ Codex config.toml 已生成');
       console.log('\n✓ 配置完成！\n'); process.exit(0);
     }
     console.log('⚠️  已有凭证无效，将重新授权。\n');
@@ -105,7 +105,7 @@ async function authCommand(_args) {
   saveCredentials({ appId: appConfig.id, privateKey: appConfig.pem });
   console.log(`\n✓ App ID: ${appConfig.id}`); console.log('✓ 凭据已保存到 ~/.pr-forge/credentials');
   generateMcpJson(projectRoot, 'pr-forge'); console.log('✓ .claude/mcp.json 已更新');
-  generateCodexToml('pr-forge'); console.log('✓ Codex config.toml 已生成');
+  generateCodexMcpJson('pr-forge'); console.log('✓ Codex config.toml 已生成');
 
   const installUrl = `https://github.com/settings/apps/${appConfig.slug || 'pr-forge'}/installations`;
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

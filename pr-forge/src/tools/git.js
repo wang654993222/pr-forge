@@ -1,8 +1,34 @@
-﻿import { ErrorCode, error } from '../error-codes.js';
+import { ErrorCode, error } from '../error-codes.js';
 import { execSync } from 'node:child_process';
+import { platform } from 'node:os';
 
+const PLATFORM = platform();
+
+// Escape a shell argument for platform-safe quoting.
+// Unix: single-quote with embedded-quote escaping.
+// Windows (cmd.exe): double-quote, escaping embedded double-quotes.
 function escapeShellArg(arg) {
+  if (PLATFORM === 'win32') {
+    return '"' + String(arg).replace(/"/g, '\\"') + '"';
+  }
   return "'" + String(arg).replace(/'/g, "'\\''") + "'";
+}
+
+// Auto-detect the default branch name (main/master) from git remote.
+function getDefaultBranch(git) {
+  try {
+    const ref = git.execSync('git symbolic-ref refs/remotes/origin/HEAD').toString().trim();
+    return ref.replace('refs/remotes/origin/', '');
+  } catch {
+    // Fallback: try 'main' first, then 'master'.
+    try {
+      git.execSync('git rev-parse --verify origin/main');
+      return 'main';
+    } catch {
+      try { git.execSync('git rev-parse --verify origin/master'); return 'master'; }
+      catch { return 'main'; }
+    }
+  }
 }
 
 async function commit_and_push(params, gitOrExec, platform) {
@@ -34,7 +60,7 @@ async function commit_and_push(params, gitOrExec, platform) {
     return error('BRANCH_MISMATCH');
   }
 
-  // Check if there are changes to commit (skip if clean)
+  // Check if there are changes to commit
   try {
     git.execSync('git status --porcelain');
   } catch {
@@ -65,7 +91,21 @@ async function commit_and_push(params, gitOrExec, platform) {
       } else {
         git.execSync('git add -A');
       }
-      git.execSync(`git commit -m ${escapeShellArg(message)}`);
+      try {
+        // Windows cmd.exe cannot handle multi-line -m; use multiple -m flags.
+        if (PLATFORM === 'win32' && message.includes('\n')) {
+          const lines = message.split('\n');
+          const args = lines.map(l => `-m ${escapeShellArg(l)}`).join(' ');
+          git.execSync(`git commit ${args}`);
+        } else {
+          git.execSync(`git commit -m ${escapeShellArg(message)}`);
+        }
+      } catch (e) {
+        const msg = (e.stderr?.toString() || '') + (e.stdout?.toString() || '');
+        if (!msg.includes('nothing to commit') && !msg.includes('nothing added to commit')) {
+          throw e;
+        }
+      }
     }
 
     git.execSync(`git push origin ${escapeShellArg(targetBranch)}`);
@@ -74,7 +114,7 @@ async function commit_and_push(params, gitOrExec, platform) {
     let resolvedPrNumber = pr_number;
     if (!resolvedPrNumber && platform) {
       try {
-        const head = `${platform.owner}:${targetBranch}`;
+        const head = targetBranch;
         const prs = await platform.listPRs('open', head);
         if (prs.length > 0) {
           resolvedPrNumber = prs[0].number;
@@ -83,11 +123,12 @@ async function commit_and_push(params, gitOrExec, platform) {
           const prBody = reviewer
             ? `<!-- pr-forge-reviewer: ${reviewer} -->\n\n${message}`
             : message;
-          const newPr = await platform.createPR(prTitle, targetBranch, 'main', prBody);
+          const base = getDefaultBranch(git);
+          const newPr = await platform.createPR(prTitle, targetBranch, base, prBody);
           resolvedPrNumber = newPr.number;
         }
-      } catch {
-        // PR creation is best-effort; push already succeeded
+      } catch (err) {
+        console.error('pr-forge: PR creation failed:', err.message);
       }
     }
 
