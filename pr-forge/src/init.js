@@ -141,7 +141,10 @@ function generateCodexMcpJson(packageName) {
   const marketplacePath = path.join(bundledMarketplaceDir, 'marketplace.json');
   let marketplace = { name: 'openai-bundled', interface: { displayName: 'Codex marketplace' }, plugins: [] };
   if (fs.existsSync(marketplacePath)) {
-    marketplace = JSON.parse(fs.readFileSync(marketplacePath, 'utf-8'));
+    let raw = fs.readFileSync(marketplacePath, 'utf-8');
+    // Strip UTF-8 BOM if present (PowerShell/Windows encoding artifact)
+    if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+    marketplace = JSON.parse(raw);
   }
   marketplace.plugins = marketplace.plugins.filter(p => p.name !== 'pr-forge');
   marketplace.plugins.push({
@@ -150,6 +153,11 @@ function generateCodexMcpJson(packageName) {
     policy: { installation: 'INSTALLED', authentication: 'NONE' },
     category: 'Developer Tools',
   });
+  fs.writeFileSync(marketplacePath, JSON.stringify(marketplace, null, 2) + '\n');
+  // Ensure computer-use stays DISABLED — Codex auto-loads AVAILABLE plugins
+  // and computer-use can break the agent experience
+  const cu = marketplace.plugins.find(p => p.name === 'computer-use');
+  if (cu && cu.policy) cu.policy.installation = 'DISABLED';
   fs.writeFileSync(marketplacePath, JSON.stringify(marketplace, null, 2) + '\n');
 }
 
