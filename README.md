@@ -39,6 +39,10 @@ npx pr-forge doctor
 
 任何 Agent 可提交、审查、合并。提交时通过 `reviewer` 参数指定审查者（写入 PR body 的 `<!-- pr-forge-reviewer: 张三 -->` 标记），`get_review_plan(reviewer="张三")` 自动筛选需处理的 PR。所有操作受两层门禁保护。
 
+## GitHub App 授权
+
+pr-forge auth 首次运行时通过 Manifest Flow 创建 GitHub App。后续运行检测已有凭据，调用 GET /app 验证 App 仍有效后直接复用，无需重复授权。App 被删除后运行时自动检测并提示重新授权。
+
 ## 安全模型
 
 - **config.json 防篡改**：SHA256 hash 对比 `.pr-forge/.approved`
