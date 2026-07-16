@@ -123,11 +123,12 @@ function generateCodexMcpJson(packageName) {
   fs.writeFileSync(path.join(pluginJsonDir, 'plugin.json'), JSON.stringify(pluginJson, null, 2) + '\n');
 
   const env = buildMcpEnv();
+  const isWin = process.platform === 'win32';
   const mcpJson = {
     mcpServers: {
       'pr-forge': {
-        command: 'npx',
-        args: ['-y', packageName || 'pr-forge'],
+        command: isWin ? 'cmd' : 'npx',
+        args: isWin ? ['/c', 'npx', '-y', packageName || 'pr-forge'] : ['-y', packageName || 'pr-forge'],
         env,
       },
     },
@@ -156,11 +157,12 @@ function generateMcpJson(projectRoot, packageName) {
   const mcpJsonPath = path.join(projectRoot, '.claude');
   fs.mkdirSync(mcpJsonPath, { recursive: true });
   const env = buildMcpEnv();
+  const isWin = process.platform === 'win32';
   const mcpConfig = {
     mcpServers: {
       'pr-forge': {
-        command: 'npx',
-        args: ['-y', packageName || 'pr-forge'],
+        command: isWin ? 'cmd' : 'npx',
+        args: isWin ? ['/c', 'npx', '-y', packageName || 'pr-forge'] : ['-y', packageName || 'pr-forge'],
         env,
       },
     },
