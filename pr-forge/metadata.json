@@ -1,0 +1,23 @@
+{
+  "name": "pr-forge",
+  "version": "3.0.5",
+  "description": "AI 代码变更安全网关 — Agent 修改代码必须走 PR 审查，验证通过后方可合并",
+  "author": "wang654993222",
+  "license": "MIT",
+  "repository": "https://github.com/wang654993222/pr-forge.git",
+  "type": "mcp-server",
+  "tools": [
+    "get_pr_context",
+    "get_review_status",
+    "get_pr_diff",
+    "get_file_content",
+    "commit_and_push",
+    "merge_pr",
+    "run_pr_checks",
+    "set_conclusion",
+    "get_review_plan"
+  ],
+  "platforms": ["github", "gitee"],
+  "nodeVersion": ">=20.0.0",
+  "createdAt": "2026-07-16"
+}
