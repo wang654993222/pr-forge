@@ -9,6 +9,14 @@ import { set_conclusion, merge_pr } from './tools/conclusion.js';
 import { acquireLock, releaseLock } from './lock.js';
 import { execSync } from 'node:child_process';
 
+const DEBUG = process.env.PR_FORGE_DEBUG === '1';
+
+function debug(toolName, params, result) {
+  if (!DEBUG) return;
+  const ts = new Date().toISOString();
+  process.stderr.write(`[${ts}] [${toolName}] params=${JSON.stringify(params)} → result=${JSON.stringify(result)}\n`);
+}
+
 const TOOLS = [
   {
     name: 'get_pr_context',
@@ -52,6 +60,7 @@ const TOOLS = [
       properties: {
         path: { type: 'string', description: '文件路径（相对于仓库根目录）' },
         ref: { type: 'string', description: '分支或 commit SHA（可选）' },
+        max_bytes: { type: 'number', description: '最大返回字节数（可选，默认 512000）' },
       },
       required: ['path'],
     },
@@ -133,78 +142,132 @@ class PrFlowServer {
 
   async handleToolCall(name, params) {
     const env = process.env;
+    const startTime = DEBUG ? Date.now() : 0;
 
-    switch (name) {
-      case 'get_pr_context':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await get_pr_context(params, this.platform);
+    let result;
+    try {
+      switch (name) {
+        case 'get_pr_context':
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else result = await get_pr_context(params, this.platform);
+          break;
 
-      case 'get_review_status':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await get_review_status(params, this.platform);
+        case 'get_review_status':
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else result = await get_review_status(params, this.platform);
+          break;
 
-      case 'get_pr_diff':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await get_pr_diff(params, this.platform);
+        case 'get_pr_diff':
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else result = await get_pr_diff(params, this.platform);
+          break;
 
-      case 'get_file_content':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await get_file_content(params, this.platform);
+        case 'get_file_content':
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else result = await get_file_content(params, this.platform);
+          break;
 
-      case 'commit_and_push': {
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        const git = { execSync };
-        return await commit_and_push(params, git, this.platform);
-      }
-
-      case 'merge_pr':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await merge_pr(params, this.platform);
-
-      case 'run_pr_checks': {
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        const context = {
-          projectRoot: this.projectRoot,
-          verifyConfig: () => verifyConfig(this.projectRoot),
-          acquireLock: () => acquireLock(this.projectRoot, params.pr_number),
-          releaseLock: () => releaseLock(this.projectRoot, params.pr_number),
-        };
-        const git = { execSync };
-        return await run_pr_checks(params, this.config, this.platform, context, git);
-      }
-
-      case 'set_conclusion':
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        return await set_conclusion(params, this.platform);
-
-      case 'get_review_plan': {
-        if (!this.platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
-        // Handle auto-detect (no pr_number/branch)
-        let resolvedParams = { ...params };
-        if (!resolvedParams.pr_number && !resolvedParams.branch) {
-          const branch = getCurrentBranch();
-          if (branch && !['main', 'master'].includes(branch)) {
-            resolvedParams.branch = branch;
-          } else {
-            // Fallback: list open PRs, get latest
-            try {
-              const prs = await this.platform.listPRs('open');
-              if (prs.length > 0) {
-                resolvedParams.pr_number = prs[0].number;
-              } else {
-                return { ok: false, error: { code: 'NO_PULL_REQUEST', message: '没有 open PR' } };
-              }
-            } catch {
-              return { ok: false, error: { code: 'NO_PULL_REQUEST', message: '无法获取 PR 列表' } };
-            }
+        case 'commit_and_push': {
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else {
+            const git = { execSync };
+            result = await commit_and_push(params, git, this.platform);
           }
+          break;
         }
-        return await get_review_plan(resolvedParams, this.platform, this.config);
-      }
 
-      default:
-        return { ok: false, error: { code: 'UNKNOWN_TOOL', message: `Unknown tool: ${name}` } };
+        case 'merge_pr':
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else result = await merge_pr(params, this.platform);
+          break;
+
+        case 'run_pr_checks': {
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else {
+            const context = {
+              projectRoot: this.projectRoot,
+              verifyConfig: () => verifyConfig(this.projectRoot),
+              acquireLock: () => acquireLock(this.projectRoot, params.pr_number),
+              releaseLock: () => releaseLock(this.projectRoot, params.pr_number),
+            };
+            const git = { execSync };
+            result = await run_pr_checks(params, this.config, this.platform, context, git);
+          }
+          break;
+        }
+
+        case 'set_conclusion':
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else result = await set_conclusion(params, this.platform);
+          break;
+
+        case 'get_review_plan': {
+          if (!this.platform) result = { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+          else {
+            // Resolve branch → pr_number when branch is provided but pr_number is not
+            let resolvedParams = { ...params };
+            if (resolvedParams.branch && !resolvedParams.pr_number) {
+              try {
+                const prs = await this.platform.listPRs('open', resolvedParams.branch);
+                if (prs.length > 0) {
+                  resolvedParams.pr_number = prs[0].number;
+                } else {
+                  result = { ok: false, error: { code: 'PR_NOT_FOUND', message: `未找到分支 ${resolvedParams.branch} 对应的 open PR` } };
+                  break;
+                }
+              } catch {
+                result = { ok: false, error: { code: 'NETWORK_ERROR', message: '无法获取 PR 列表' } };
+                break;
+              }
+            }
+            // Handle auto-detect (no pr_number or branch)
+            if (!resolvedParams.pr_number && !resolvedParams.branch) {
+              const branch = getCurrentBranch();
+              if (branch && !['main', 'master'].includes(branch)) {
+                resolvedParams.branch = branch;
+                try {
+                  const prs = await this.platform.listPRs('open', resolvedParams.branch);
+                  if (prs.length > 0) {
+                    resolvedParams.pr_number = prs[0].number;
+                  }
+                } catch {
+                  // Fall through to pr_number-less handling
+                }
+              }
+              if (!resolvedParams.pr_number) {
+                try {
+                  const prs = await this.platform.listPRs('open');
+                  if (prs.length > 0) {
+                    resolvedParams.pr_number = prs[0].number;
+                  } else {
+                    result = { ok: false, error: { code: 'NO_PULL_REQUEST', message: '没有 open PR' } };
+                    break;
+                  }
+                } catch {
+                  result = { ok: false, error: { code: 'NO_PULL_REQUEST', message: '无法获取 PR 列表' } };
+                  break;
+                }
+              }
+            }
+            result = await get_review_plan(resolvedParams, this.platform, this.config);
+          }
+          break;
+        }
+
+        default:
+          result = { ok: false, error: { code: 'UNKNOWN_TOOL', message: `Unknown tool: ${name}` } };
+      }
+    } catch (e) {
+      result = { ok: false, error: { code: 'INTERNAL_ERROR', message: e.message } };
     }
+
+    if (DEBUG) {
+      const duration_ms = Date.now() - startTime;
+      const ok = result?.ok === true;
+      debug(name, params, { ok, duration_ms });
+    }
+
+    return result;
   }
 
   getTools() {
@@ -249,8 +312,16 @@ async function startServer() {
         // no response needed
       }
     } catch (e) {
-      // Log error but continue
-      process.stderr.write(`pr-forge error: ${e.message}\n`);
+      if (e instanceof SyntaxError) {
+        // JSON parse error — reply with JSON-RPC compliant error
+        process.stdout.write(JSON.stringify({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32700, message: 'Parse error' },
+        }) + '\n');
+      } else {
+        process.stderr.write(`pr-forge error: ${e.message}\n`);
+      }
     }
   }
 }
