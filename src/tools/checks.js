@@ -12,10 +12,10 @@ async function run_pr_checks(params, config, platform, context, gitExec) {
     return error('CONFIG_MODIFIED');
   }
 
-  // Check dirty worktree
+  // Check dirty worktree (only tracked files, ignore untracked)
   if (git.execSync) {
     try {
-      const status = git.execSync('git status --porcelain').toString().trim();
+      const status = git.execSync('git status --porcelain -uno').toString().trim();
       if (status) {
         return error('DIRTY_WORKTREE');
       }
@@ -38,6 +38,33 @@ async function run_pr_checks(params, config, platform, context, gitExec) {
     git.execSync(`git fetch origin +pull/${pr_number}/head:pr-${pr_number}`);
     git.execSync(`git checkout pr-${pr_number}`);
 
+    const DOC_EXTENSIONS = new Set([
+      '.md', '.txt', '.rst', '.adoc', '.markdown', '.mdown',
+    ]);
+    const DOC_ONLY_GLOBS = [
+      'README*', 'CHANGELOG*', 'CONTRIBUTING*', 'LICENSE*',
+    ];
+
+    function hasCodeChanges() {
+      try {
+        const changedFiles = git.execSync(
+          `git diff --name-only origin/${pr.base_ref}...HEAD`
+        ).toString().trim();
+        if (!changedFiles) return false;
+        return changedFiles.split('\n').some((f) => {
+          const name = f.replace(/^.*[/\\]/, '').toLowerCase();
+          if (DOC_EXTENSIONS.has(f.substring(f.lastIndexOf('.')).toLowerCase())) return false;
+          if (DOC_ONLY_GLOBS.some((g) => {
+            const pat = g.toLowerCase().replace(/\*/g, '.*');
+            return new RegExp('^' + pat + '$').test(name);
+          })) return false;
+          return true;
+        });
+      } catch {
+        return true; // if we can't determine, run checks
+      }
+    }
+
     const phases = config.phases.filter(
       (p) => !targetPhase || p.id === targetPhase
     );
@@ -45,10 +72,30 @@ async function run_pr_checks(params, config, platform, context, gitExec) {
     const results = {};
     const executed = [];
     let codeUpdated = false;
+    const shouldRunChecks = hasCodeChanges();
 
     for (const phase of phases) {
       executed.push(phase.id);
       const startTime = Date.now();
+
+      if (!shouldRunChecks) {
+        const summary = '跳过: 仅文档变更，无需运行代码检查';
+        results[phase.id] = {
+          conclusion: 'success',
+          exit_code: 0,
+          duration_ms: 0,
+          output_summary: summary,
+        };
+        try {
+          await platform.createCheckRun(prHeadSha, `pr-forge/${phase.id}`, {
+            conclusion: 'success',
+            output: { title: phase.name || phase.id, summary },
+          });
+        } catch {
+            // Check Run write failure is non-fatal
+          }
+        continue;
+      }
 
       try {
         const output = git.execSync(phase.check, {
