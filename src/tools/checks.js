@@ -12,10 +12,10 @@ async function run_pr_checks(params, config, platform, context, gitExec) {
     return error('CONFIG_MODIFIED');
   }
 
-  // Check dirty worktree
+  // Check dirty worktree (only tracked files, ignore untracked)
   if (git.execSync) {
     try {
-      const status = git.execSync('git status --porcelain').toString().trim();
+      const status = git.execSync('git status --porcelain -uno').toString().trim();
       if (status) {
         return error('DIRTY_WORKTREE');
       }
