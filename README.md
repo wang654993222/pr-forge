@@ -19,21 +19,25 @@ npx pr-forge init
 npx pr-forge doctor
 ```
 
-`init` 自动检测项目类型并生成 `.pr-forge/config.json`，将 token 存入 `~/.pr-forge/credentials`，配置 `.claude/mcp.json`。
+`init` 自动检测项目类型并生成 `.pr-forge/config.json`，将 token 存入 `~/.pr-forge/credentials`，配置 `.claude/mcp.json` 和 `~/.codex/.mcp.json`。
 
 ## MCP 工具 (9 个)
 
 | # | 工具 | 说明 |
 |---|------|------|
 | 1 | `get_pr_context` | 获取 PR 元数据（title/state/draft/SHA/branch/author） |
-| 2 | `get_review_status` | 读取各 phase Check Run 结论 + 完整审查报告（含聚合状态） |
+| 2 | `get_review_status` | 读取各 phase Check Run 结论 + 完整审查报告（含聚合状态），支持 branch 参数 |
 | 3 | `get_pr_diff` | 获取 PR unified diff |
 | 4 | `get_file_content` | 获取仓库文件内容 |
-| 5 | `commit_and_push` | 提交修复并推送到 PR 分支 |
+| 5 | `commit_and_push` | 提交修复并推送到 PR 分支（自动创建 PR、支持 reviewer 指派、返回 pr_number） |
 | 6 | `merge_pr` | 合并 PR（两层门禁：事实层聚合 + 审查意见） |
 | 7 | `run_pr_checks` | 执行 config.json 的 check 命令（多阶段），各 phase 独立写 Check Run |
-| 8 | `set_conclusion` | 修改 Check Run 整体结论，附带审查报告 |
-| 9 | `get_review_plan` | 动态生成审查步骤清单（无参数自动找最新 open PR） |
+| 8 | `set_conclusion` | 修改 Check Run 整体结论，附带审查报告（自动校验 SHA 防过期） |
+| 9 | `get_review_plan` | 动态生成审查步骤清单（无参数返回全部 open PR，支持 reviewer 过滤） |
+
+## 多 Agent 协同
+
+任何 Agent 可提交、审查、合并。提交时通过 `reviewer` 参数指定审查者（写入 PR body 的 `<!-- pr-forge-reviewer: 张三 -->` 标记），`get_review_plan(reviewer="张三")` 自动筛选需处理的 PR。所有操作受两层门禁保护。
 
 ## 安全模型
 

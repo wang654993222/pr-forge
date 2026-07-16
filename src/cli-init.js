@@ -1,5 +1,5 @@
 import * as readline from 'node:readline';
-import { detectProjectType, generateConfig, saveCredentials, readCredentials, generateMcpJson, checkV2Install } from './init.js';
+import { detectProjectType, generateConfig, saveCredentials, readCredentials, generateMcpJson, generateCodexMcpJson, checkV2Install } from './init.js';
 
 async function prompt(rl, question) {
   return new Promise((resolve) => {
@@ -71,6 +71,8 @@ async function initCommand(args) {
   if (token) {
     generateMcpJson(projectRoot, 'pr-forge');
     console.log('✓ .claude/mcp.json 已生成');
+    generateCodexMcpJson('pr-forge');
+    console.log('✓ ~/.codex/.mcp.json 已生成');
     console.log('\n⚠️  mcp.json 已加入 .gitignore，不要手动取消。');
   }
 

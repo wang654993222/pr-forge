@@ -212,6 +212,25 @@ class GitHubPlatform {
     return data;
   }
 
+
+  async createPR(title, head, base, body) {
+    const { data } = await this.fetchApi(`/repos/${this.owner}/${this.repo}/pulls`, {
+      method: 'POST',
+      body: { title, head, base, body: body || '' },
+    });
+    return {
+      number: data.number,
+      title: data.title,
+      state: data.state,
+      html_url: data.html_url,
+    };
+  }
+
+  async getPRBody(prNumber) {
+    const { data } = await this.fetchApi(`/repos/${this.owner}/${this.repo}/pulls/${prNumber}`);
+    return data.body || '';
+  }
+
   async listPRComments(prNumber) {
     const { data } = await this.fetchApi(`/repos/${this.owner}/${this.repo}/issues/${prNumber}/comments`);
     return data;

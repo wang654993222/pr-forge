@@ -74,26 +74,44 @@ function hasAppCredentials() {
   return !!(creds?.appId && creds?.privateKey);
 }
 
+function buildMcpEnv() {
+  const creds = readCredentials();
+  const env = {};
+  if (creds?.token) env.PR_FORGE_TOKEN = creds.token;
+  if (creds?.appId && creds?.privateKey) {
+    env.PR_FORGE_GITHUB_APP_ID = String(creds.appId);
+    env.PR_FORGE_GITHUB_APP_PRIVATE_KEY = creds.privateKey;
+    if (creds.installationId) env.PR_FORGE_GITHUB_APP_INSTALLATION_ID = String(creds.installationId);
+  }
+  return env;
+}
+
+function generateCodexMcpJson(packageName) {
+  const codexDir = path.join(homedir(), '.codex');
+  fs.mkdirSync(codexDir, { recursive: true });
+  const codexMcpPath = path.join(codexDir, '.mcp.json');
+
+  let existing = { mcpServers: {} };
+  if (fs.existsSync(codexMcpPath)) {
+    try {
+      existing = JSON.parse(fs.readFileSync(codexMcpPath, 'utf-8'));
+    } catch {
+      // Invalid JSON, start fresh
+    }
+  }
+
+  existing.mcpServers['pr-forge'] = {
+    type: 'stdio', command: 'npx', args: ['-y', packageName || 'pr-forge'], env: buildMcpEnv(),
+  };
+
+  fs.writeFileSync(codexMcpPath, JSON.stringify(existing, null, 2) + '\n');
+}
+
 function generateMcpJson(projectRoot, packageName) {
   const mcpJsonPath = path.join(projectRoot, '.claude');
   fs.mkdirSync(mcpJsonPath, { recursive: true });
 
-  const creds = readCredentials();
-  const env = {};
-
-  // PAT mode: pass PR_FORGE_TOKEN env var
-  if (creds?.token) {
-    env.PR_FORGE_TOKEN = creds.token;
-  }
-
-  // GitHub App mode: pass app credentials as env vars
-  if (creds?.appId && creds?.privateKey) {
-    env.PR_FORGE_GITHUB_APP_ID = String(creds.appId);
-    env.PR_FORGE_GITHUB_APP_PRIVATE_KEY = creds.privateKey;
-    if (creds.installationId) {
-      env.PR_FORGE_GITHUB_APP_INSTALLATION_ID = String(creds.installationId);
-    }
-  }
+  const env = buildMcpEnv();
 
   const mcpConfig = {
     mcpServers: {
@@ -130,6 +148,8 @@ export {
   saveCredentials,
   readCredentials,
   hasAppCredentials,
+  buildMcpEnv,
+  generateCodexMcpJson,
   generateMcpJson,
   checkV2Install,
   PROJECT_DETECTORS,

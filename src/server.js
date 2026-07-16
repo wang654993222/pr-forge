@@ -111,12 +111,13 @@ const TOOLS = [
   },
   {
     name: 'get_review_plan',
-    description: '动态生成审查步骤清单（无参数自动找最新 open PR）',
+    description: '动态生成审查步骤清单（无参数返回全部 open PR，支持 reviewer 过滤）',
     inputSchema: {
       type: 'object',
       properties: {
         pr_number: { type: 'number', description: 'PR 编号（可选）' },
         branch: { type: 'string', description: '分支名（可选）' },
+        reviewer: { type: 'string', description: '审查者（可选，筛选标注为该审查者的 PR）' },
       },
       required: [],
     },
@@ -195,7 +196,7 @@ class PrFlowServer {
         if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
         // Handle auto-detect (no pr_number/branch)
         let resolvedParams = { ...params };
-        if (!resolvedParams.pr_number && !resolvedParams.branch) {
+        if (!resolvedParams.pr_number && !resolvedParams.branch && !resolvedParams.reviewer) {
           const branch = getCurrentBranch();
           if (branch && !['main', 'master'].includes(branch)) {
             resolvedParams.branch = branch;

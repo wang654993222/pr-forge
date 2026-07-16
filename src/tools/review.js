@@ -11,8 +11,10 @@ function getPhaseCheckRuns(checkRuns) {
   };
 }
 
+const REVIEWER_MARKER = /<!--\s*pr-forge-reviewer:\s*(.+?)\s*-->/;
+
 async function get_review_plan(params, platform, config) {
-  let { pr_number, branch } = params || {};
+  let { pr_number, branch, reviewer } = params || {};
 
   // Resolve branch to PR number when pr_number is not provided
   if (!pr_number && branch) {
@@ -26,6 +28,75 @@ async function get_review_plan(params, platform, config) {
       }
     } catch {
       // Fall through to getPR which will return a proper error
+    }
+  }
+
+  // No params: return ALL open PRs
+  if (!pr_number && !branch) {
+    try {
+      const allPrs = await platform.listPRs("open");
+      
+      // Filter by reviewer if specified
+      let candidates = allPrs;
+      if (reviewer) {
+        const filtered = [];
+        for (const p of allPrs) {
+          try {
+            const body = await platform.getPRBody(p.number);
+            const match = body.match(REVIEWER_MARKER);
+            if (match && match[1].trim() === reviewer) {
+              filtered.push(p);
+            }
+          } catch {
+            // Skip PRs we can't read
+          }
+        }
+        candidates = filtered;
+      }
+
+      if (candidates.length === 0) {
+        return { ok: true, prs: [], count: 0, message: reviewer ? `没有需要 ${reviewer} 处理的 PR` : '没有 open PR' };
+      }
+
+      // Build plan for each candidate
+      const plans = [];
+      for (const p of candidates) {
+        const checkRuns = await platform.listCheckRuns(p.head_sha);
+        const { phases: phaseCheckRuns, conclusion: conclusionCheckRun } = getPhaseCheckRuns(checkRuns);
+        const phases = (config?.phases || [{ id: 'default', name: '验证' }]).map((ph) => {
+          const cr = phaseCheckRuns.find((c) => c.name === `pr-forge/${ph.id}`);
+          return {
+            id: ph.id, name: ph.name || ph.id,
+            check_run_status: cr?.status === 'completed' ? 'completed' : 'not_started',
+            conclusion: cr?.conclusion || null,
+          };
+        });
+        const allPhasesCompleted = phases.every((ph) => ph.check_run_status === 'completed');
+        const allPhasesSuccess = phases.every((ph) => ph.conclusion === 'success');
+        const conclusionDone = !!conclusionCheckRun;
+        let next_action = 'run_pr_checks';
+        let next_params = { pr_number: p.number };
+        let merge_ready = false;
+        if (!allPhasesCompleted) {
+          const nextPhase = phases.find((ph) => ph.check_run_status !== 'completed');
+          if (nextPhase) next_params = { pr_number: p.number, phase: nextPhase.id };
+        } else if (allPhasesSuccess && !conclusionDone) {
+          next_action = 'set_conclusion';
+          next_params = { pr_number: p.number, conclusion: 'success', report_text: '...' };
+        } else if (allPhasesSuccess && conclusionDone) {
+          next_action = 'merge_pr';
+          next_params = { pr_number: p.number };
+          merge_ready = true;
+        }
+        plans.push({
+          pr: { number: p.number, title: p.title, head_sha: p.head_sha },
+          phases, conclusion_status: conclusionCheckRun?.conclusion || 'not_set',
+          merge_ready, next_action, next_params,
+        });
+      }
+      return { ok: true, prs: plans, count: plans.length };
+    } catch {
+      return error('PR_NOT_FOUND');
     }
   }
 
