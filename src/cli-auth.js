@@ -6,7 +6,9 @@ import {
   saveCredentials,
   readCredentials,
   generateMcpJson,
+  generateCodexMcpJson,
 } from './init.js';
+import { createAppJWT, validateApp } from './platforms/github.js';
 
 const GITHUB_API = 'https://api.github.com';
 const TIMEOUT_MS = 120_000;
@@ -152,15 +154,25 @@ async function authCommand(_args) {
 
   console.log('\npr-forge GitHub App 授权 (Manifest Flow)\n');
 
-  // Warn if existing credentials
+  // Check existing App credentials — reuse if valid
   const existing = readCredentials();
   if (existing?.appId && existing?.privateKey) {
-    console.log(
-      '⚠️  已有 GitHub App 凭据 (~/.pr-forge/credentials)，继续操作将覆盖。',
-    );
+    console.log('→ 检测到已有 GitHub App 凭据，正在验证...');
+    const jwt = createAppJWT(existing.appId, existing.privateKey);
+    if (jwt && await validateApp(jwt)) {
+      console.log(`✓ App #${existing.appId} 有效，直接复用\n`);
+      generateMcpJson(projectRoot, 'pr-forge');
+      console.log('✓ .claude/mcp.json 已更新');
+      generateCodexMcpJson('pr-forge');
+      console.log('✓ ~/.codex/.mcp.json 已更新');
+      console.log('\n✓ 配置完成！\n');
+      process.exit(0);
+    } else {
+      console.log('⚠️  已有凭证无效（App 可能已被删除），将重新授权。\n');
+    }
   } else if (existing?.token) {
     console.log(
-      '⚠️  检测到 PAT token，App 授权后将替换为 GitHub App 凭据。',
+      '⚠️  检测到 PAT token，App 授权后将替换为 GitHub App 凭据。\n',
     );
   }
 
@@ -302,6 +314,8 @@ async function authCommand(_args) {
   // Generate mcp.json
   generateMcpJson(projectRoot, 'pr-forge');
   console.log('✓ .claude/mcp.json 已更新');
+  generateCodexMcpJson('pr-forge');
+  console.log('✓ ~/.codex/.mcp.json 已更新');
 
   // Respond success to browser, then redirect to install page
   const installUrl = `https://github.com/settings/apps/${appConfig.slug || `pr-forge`}/installations`;

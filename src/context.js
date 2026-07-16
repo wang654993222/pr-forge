@@ -93,10 +93,16 @@ async function resolvePlatform(env) {
 
   let token = info.token;
 
-  // If credentials are for a GitHub App, generate an installation token (ghs_)
+  // If credentials are for a GitHub App, validate and generate an installation token (ghs_)
   if (isAppToken(token)) {
-    const { createAppJWT, getInstallationToken } = await import('./platforms/github.js');
+    const { createAppJWT, getInstallationToken, validateApp } = await import('./platforms/github.js');
     const jwt = createAppJWT(token.__app.appId, token.__app.privateKey);
+    if (!jwt) return null;
+    const appValid = await validateApp(jwt);
+    if (!appValid) {
+      console.error('pr-forge: GitHub App 已失效（可能已被删除），请运行 pr-forge auth 重新授权');
+      return null;
+    }
     token = await getInstallationToken(jwt, token.__app.installationId, info.owner, info.repo);
     if (!token) return null;
   }

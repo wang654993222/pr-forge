@@ -242,4 +242,19 @@ class GitHubPlatform {
   }
 }
 
-export { GitHubPlatform, createAppJWT, getInstallationToken };
+async function validateApp(jwt) {
+  try {
+    const res = await fetch(`${GITHUB_API}/app`, {
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export { GitHubPlatform, createAppJWT, getInstallationToken, validateApp };
