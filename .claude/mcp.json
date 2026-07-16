@@ -1,12 +1,14 @@
 {
   "mcpServers": {
-    "pr-flow": {
-      "command": "python3",
-      "args": ["mcp-server/pr-flow/server.py"],
-      "cwd": "/Users/wangchenglong/IdeaProjects/host/hsoft-data-manage",
+    "pr-forge": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "pr-forge"
+      ],
       "env": {
-        "GITHUB_TOKEN": "REDACTED",
-        "GITHUB_REPOSITORY": "wang654993222/hsoft-data-manage"
+        "PR_FORGE_GITHUB_APP_ID": "4311471",
+        "PR_FORGE_GITHUB_APP_PRIVATE_KEY": "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAxLkVqv1IvpOJq88cysf+U8hgqx67ruKriEr6GXEH4CgodrtT\nVYp2tm/zLyNGO9JCD58IEVAEWx3HJwUwFpEm9BlpG81j9Uu6L4jtfWbsJZep0VBx\nzEDuNypqkzC7F++BI3207f3fSV3M+qACzTh7ldK7BqS8vRdt10L0LH0DDXx53JZV\n7f6vPpgaDz0Tf9GdyU0mneZvjD6KdKiwUDgMGivSjsKhLLdNoDqC8XfibdxilTbP\njax1SDv5YcEIuY2BrUesMwhdC0QnD9pcFXVTP1L/ehZkW78p3ghVNbm7m16a54iR\n9YzMGsBXIf5PprDi+Q0s9PR8d58ZwdBmqrP67QIDAQABAoIBAQC8L6YHtVYyYObR\nAUa0wU6NDWFUMQkviky3C6pmThdPmnri4d4dNWDMsxk6XY8hSMjDMsm/7gDMvRa3\nQCI5ZE+UMP64hul5TSDluiId1ShP6d6cikziLLb09NGQzowboJSzw9wh0rsX7vBY\nTFuBv+eRck5RU6Pta4064CS+rjQOX/UWBW+8Yy0p99iHkXKShcS8qEabW3zqUqvg\n5p+3Z0EW7MXe+5tqFtB2iuMOfKOgTZdi3ectzbQfuyePEF4DtKTVxaP/dPNRXioo\nhIgOEWxBO4rUfRYKmzlX15kn1dGOAIxO5xKoKzuvIi2DFKEKS3vZ5szse5FQUFZB\nz1FR79ctAoGBAP/JMdwWugJzkNvhuYtHVRzQq/w5HbH9YdNPogX+E1vxw1zOvHML\nmvDXrNK3eWpgFHnDSoAlRmFCdeHZzs4RkP5nj+43NouLH8zgwAj3cYa6IxJqM+Uo\nfwEfOF+Ca1h4Rexa5aqHA5KJPtlcZtZWGVhZEMTdEGduJRAaYNF18pA7AoGBAMTj\nPCQlx6wGWgxE1pVn8joU8ZhWHcBfTfrLwL4ur/Ze+qJI2CeY3yJCQN+PRuEXU7Sh\n5aufzG/V9+mEvKmzGk6cecDL9mTq9iaRMPPWSLeQ0lWfCE2F3mg2lirkmdrZwAjE\nFUkiUvcjZt+E3Hhu4FbvkY6n3HJy+w7qvGg/NVb3AoGAWWh+YSwggNLcg793F9Qr\nUBMwys08MAcdtrtTKz0Qj0cGvt4UyTH5Ss5Yvp8bda93+MfmtrxQyZZtljCINUe2\novaYPPBXxJcw2nCFL50utaVCtSEiWqu5GS9MiTYRR69i4ac0OFNRUFtg+KFv4OPf\noB4h2m5bWYwKsIJH7W+JBhkCgYBCHGM3aBAx7TgTYpIDPRIS+rFdC52V2OqgSgaA\nVcD0I1RZZchfE2/pWwHZj4ynTGPpBWvPQyssalaCbPXErcUpnFUtrc8gd90LejlL\nxypHqTNXWL06+raBm8K0yGn5GKDo0J6tHf9pyNNkPoKhVemyh2MC2c6mB4HRsnRt\nNLw+ZQKBgQCU9fPr9rDCUAvClsZ/CufI5Qo5aya0eO5zDfoX+7ToBmXJsC87SAsy\nzucDki+ZvRt4xeyMLXe2E7NldDLdjHSHM3jhQv/HAW0kTyVrBu5MVqkWQZarH/aT\n2g/yWpQVgJ4sokL3E9L+FFEH4RmHsvVqrqhN32/AXDyDaKi7gTp9eA==\n-----END RSA PRIVATE KEY-----\n"
       }
     }
   }

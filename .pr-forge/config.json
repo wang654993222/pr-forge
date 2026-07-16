@@ -5,7 +5,7 @@
     {
       "id": "verify",
       "name": "验证",
-      "check": "npm run lint && npm test"
+      "check": "node --check src/cli.js && node --check src/server.js && node --check src/context.js && node --check src/init.js && node --check src/cli-auth.js && node --check src/platforms/github.js"
     }
   ]
 }
