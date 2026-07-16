@@ -41,28 +41,20 @@ function generateConfig(projectRoot, defaultPhases) {
     timeout: 300,
     phases: defaultPhases || [],
   };
-
   const prForgeDir = path.join(projectRoot, '.pr-forge');
   fs.mkdirSync(prForgeDir, { recursive: true });
-
   const configPath = path.join(prForgeDir, 'config.json');
   const configContent = JSON.stringify(config, null, 2) + '\n';
   fs.writeFileSync(configPath, configContent);
-
   const hash = createHash('sha256').update(configContent).digest('hex');
   fs.writeFileSync(path.join(prForgeDir, '.approved'), hash);
-
   return config;
 }
 
 function readCredentials() {
   const credPath = path.join(homedir(), '.pr-forge', 'credentials');
   if (fs.existsSync(credPath)) {
-    try {
-      return JSON.parse(fs.readFileSync(credPath, 'utf-8'));
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(fs.readFileSync(credPath, 'utf-8')); } catch { return null; }
   }
   return null;
 }
@@ -91,42 +83,79 @@ function buildMcpEnv() {
   return env;
 }
 
-function generateCodexToml(packageName) {
-  const codexDir = path.join(homedir(), '.codex');
-  fs.mkdirSync(codexDir, { recursive: true });
-  const tomlPath = path.join(codexDir, 'config.toml');
+function generateCodexMcpJson(packageName) {
+  const tmpPluginsDir = path.join(homedir(), '.codex', '.tmp', 'plugins');
+  const pluginDir = path.join(tmpPluginsDir, 'plugins', 'pr-forge');
+  const pluginJsonDir = path.join(pluginDir, '.codex-plugin');
+  fs.mkdirSync(pluginJsonDir, { recursive: true });
 
-  let existingToml = '';
+  // Clean up old config.toml entry from v3.1 TOML bug
+  const tomlPath = path.join(homedir(), '.codex', 'config.toml');
   if (fs.existsSync(tomlPath)) {
-    existingToml = fs.readFileSync(tomlPath, 'utf-8');
-    if (existingToml.includes('[mcp_servers.pr-forge]')) {
-      return; // already configured, skip
+    let toml = fs.readFileSync(tomlPath, 'utf-8');
+    const idx = toml.indexOf('\n[mcp_servers.pr-forge]');
+    if (idx !== -1) {
+      const after = toml.substring(idx + 1);
+      const nextMatch = after.match(/\n\[(?!mcp_servers\.pr-forge\.)/);
+      toml = toml.substring(0, idx) + (nextMatch ? after.substring(nextMatch.index) : '');
+      toml = toml.replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+      fs.writeFileSync(tomlPath, toml);
     }
   }
 
-  const creds = readCredentials();
-  let envBlock = '';
-  if (creds?.appId && creds?.privateKey) {
-    envBlock = `PR_FORGE_GITHUB_APP_ID = "${creds.appId}"\nPR_FORGE_GITHUB_APP_PRIVATE_KEY = '''\n${creds.privateKey}\n'''`;
-    if (creds.installationId) envBlock += `\nPR_FORGE_GITHUB_APP_INSTALLATION_ID = "${creds.installationId}"`;
-  } else if (creds?.token) {
-    envBlock = `PR_FORGE_TOKEN = "${creds.token}"`;
-  } else {
-    envBlock = 'PR_FORGE_TOKEN = "<YOUR_TOKEN>"';
+  const pluginJson = {
+    name: 'pr-forge',
+    version: '3.1.0',
+    description: 'AI Code Review Gateway — Agent must pass PR review before merge',
+    author: { name: 'pr-forge' },
+    license: 'MIT',
+    keywords: ['code-review', 'pr', 'github', 'gitee', 'mcp'],
+    mcpServers: './.mcp.json',
+    interface: {
+      displayName: 'PR Forge',
+      shortDescription: 'AI-driven PR review with automated checks and merge gating',
+      longDescription: 'pr-forge adds a safety gate before AI code changes are merged. Every PR must pass automated checks (lint/test/build) before an AI reviewer can approve and merge.',
+      developerName: 'pr-forge',
+      category: 'Developer Tools',
+      capabilities: ['Read', 'Write', 'Interactive'],
+    },
+  };
+  fs.writeFileSync(path.join(pluginJsonDir, 'plugin.json'), JSON.stringify(pluginJson, null, 2) + '\n');
+
+  const env = buildMcpEnv();
+  const mcpJson = {
+    mcpServers: {
+      'pr-forge': {
+        command: 'npx',
+        args: ['-y', packageName || 'pr-forge'],
+        env,
+      },
+    },
+  };
+  fs.writeFileSync(path.join(pluginDir, '.mcp.json'), JSON.stringify(mcpJson, null, 2) + '\n');
+
+  // Register in the personal marketplace so Codex discovers the plugin
+  const bundledMarketplaceDir = path.join(homedir(), '.codex', '.tmp', 'bundled-marketplaces', 'openai-bundled', '.agents', 'plugins');
+  fs.mkdirSync(bundledMarketplaceDir, { recursive: true });
+  const marketplacePath = path.join(bundledMarketplaceDir, 'marketplace.json');
+  let marketplace = { name: 'openai-bundled', interface: { displayName: 'Codex marketplace' }, plugins: [] };
+  if (fs.existsSync(marketplacePath)) {
+    marketplace = JSON.parse(fs.readFileSync(marketplacePath, 'utf-8'));
   }
-
-  const tomlBlock = `\n[mcp_servers.pr-forge]\ncommand = 'pr-forge'\nargs = []\nstartup_timeout_sec = 120\n\n[mcp_servers.pr-forge.env]\n${envBlock}\n`;
-
-  const sep = existingToml && !existingToml.endsWith('\n') ? '\n' : '';
-  fs.writeFileSync(tomlPath, existingToml + sep + tomlBlock);
+  marketplace.plugins = marketplace.plugins.filter(p => p.name !== 'pr-forge');
+  marketplace.plugins.push({
+    name: 'pr-forge',
+    source: { source: 'local', path: './plugins/pr-forge' },
+    policy: { installation: 'INSTALLED', authentication: 'NONE' },
+    category: 'Developer Tools',
+  });
+  fs.writeFileSync(marketplacePath, JSON.stringify(marketplace, null, 2) + '\n');
 }
 
 function generateMcpJson(projectRoot, packageName) {
   const mcpJsonPath = path.join(projectRoot, '.claude');
   fs.mkdirSync(mcpJsonPath, { recursive: true });
-
   const env = buildMcpEnv();
-
   const mcpConfig = {
     mcpServers: {
       'pr-forge': {
@@ -136,11 +165,9 @@ function generateMcpJson(projectRoot, packageName) {
       },
     },
   };
-
   const filePath = path.join(mcpJsonPath, 'mcp.json');
   fs.writeFileSync(filePath, JSON.stringify(mcpConfig, null, 2) + '\n');
 
-  // Add to .gitignore
   const gitignorePath = path.join(projectRoot, '.gitignore');
   const entries = ['.claude/mcp.json', '.pr-forge/'];
   let gitignoreContent = '';
@@ -162,15 +189,8 @@ function checkV2Install(projectRoot) {
 }
 
 export {
-  detectAllProjectTypes,
-  mergePhases,
-  generateConfig,
-  saveCredentials,
-  readCredentials,
-  hasAppCredentials,
-  buildMcpEnv,
-  generateCodexToml,
-  generateMcpJson,
-  checkV2Install,
+  detectAllProjectTypes, mergePhases, generateConfig,
+  saveCredentials, readCredentials, hasAppCredentials, buildMcpEnv,
+  generateCodexMcpJson, generateMcpJson, checkV2Install,
   PROJECT_DETECTORS,
 };

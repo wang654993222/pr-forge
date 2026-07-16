@@ -5,7 +5,7 @@ import { execSync } from 'node:child_process';
 import {
   detectAllProjectTypes, mergePhases, generateConfig,
   saveCredentials, readCredentials,
-  generateMcpJson, generateCodexToml, checkV2Install,
+  generateMcpJson, generateCodexMcpJson, checkV2Install,
 } from './init.js';
 import { createAppJWT, validateApp } from './platforms/github.js';
 
@@ -233,7 +233,10 @@ async function initCommand(args) {
     detectedTypes.forEach((dt) => console.log(`    - ${dt.type}`));
 
     // Ask if user wants to add more
-    const answer = await prompt(rl, '\n→ 是否增加其他项目类型？[y/N] ');
+    let answer = 'n';
+    try {
+      answer = await prompt(rl, '\n→ 是否增加其他项目类型？[y/N] ');
+    } catch { answer = 'n'; }
     const allTypes = detectAllProjectTypes(projectRoot); // re-detect in case they want to add
     if (answer.toLowerCase() === 'y') {
       const allDetectors = (await import('./init.js')).PROJECT_DETECTORS;
@@ -249,8 +252,8 @@ async function initCommand(args) {
           const indices = choice.split(',').map((s) => parseInt(s.trim()));
           for (const idx of indices) {
             if (idx === 0) {
-              const customName = await prompt(rl, '  自定义名称: ');
-              const customCmd = await prompt(rl, '  验证命令: ');
+              let customName = ''; try { customName = await prompt(rl, '  自定义名称: '); } catch { customName = ''; }
+              let customCmd = ''; try { customCmd = await prompt(rl, '  验证命令: '); } catch { customCmd = ''; }
               allTypes.push({ type: customName, defaultPhases: [{ id: `custom-${allTypes.length}`, name: customName, check: customCmd }] });
             } else if (available[idx - 1]) {
               allTypes.push(available[idx - 1]);
@@ -274,8 +277,8 @@ async function initCommand(args) {
   // Generate MCP configs
   generateMcpJson(projectRoot, 'pr-forge');
   console.log('✓ .claude/mcp.json 已生成');
-  generateCodexToml('pr-forge');
-  console.log('✓ Codex config.toml 已生成（追加写入）');
+  generateCodexMcpJson('pr-forge');
+  console.log('✓ Codex 插件已安装到 marketplace');
   console.log('\n⚠️  mcp.json 已加入 .gitignore，不要手动取消。');
 
   console.log('\n✓ 初始化完成！现在可以告诉你的 Agent: "审查 PR #N"\n');
