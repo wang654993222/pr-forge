@@ -5,10 +5,17 @@ import path from 'node:path';
 import { detectPlatform, createPlatform } from './platforms/router.js';
 
 function getProjectRoot() {
+  // Walk up from cwd to find .pr-forge/, fallback to git root, then cwd.
   try {
-    const root = execSync('git rev-parse --show-toplevel', { stdio: ['pipe', 'pipe', 'pipe'] })
-      .toString().trim();
-    return root;
+    let dir = process.cwd();
+    const { root: driveRoot } = path.parse(dir);
+    while (dir !== driveRoot && dir !== path.dirname(dir)) {
+      if (fs.existsSync(path.join(dir, '.pr-forge'))) return dir;
+      dir = path.dirname(dir);
+    }
+    return execSync('git rev-parse --show-toplevel', {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).toString().trim();
   } catch {
     return process.cwd();
   }
@@ -100,7 +107,7 @@ async function resolvePlatform(env) {
     if (!jwt) return null;
     const appValid = await validateApp(jwt);
     if (!appValid) {
-      console.error('pr-forge: GitHub App 已失效（可能已被删除），请运行 pr-forge auth 重新授权');
+      console.error('pr-forge: GitHub App no longer valid (may have been deleted), run pr-forge auth to re-authorize');
       return null;
     }
     token = await getInstallationToken(jwt, token.__app.installationId, info.owner, info.repo);

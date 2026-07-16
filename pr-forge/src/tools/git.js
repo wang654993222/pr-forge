@@ -1,7 +1,16 @@
-﻿import { ErrorCode, error } from '../error-codes.js';
+import { ErrorCode, error } from '../error-codes.js';
 import { execSync } from 'node:child_process';
+import { platform } from 'node:os';
 
+const PLATFORM = platform();
+
+// Escape a shell argument for platform-safe quoting.
+// Unix: single-quote with embedded-quote escaping.
+// Windows (cmd.exe): double-quote, escaping embedded double-quotes.
 function escapeShellArg(arg) {
+  if (PLATFORM === 'win32') {
+    return '"' + String(arg).replace(/"/g, '\\"') + '"';
+  }
   return "'" + String(arg).replace(/'/g, "'\\''") + "'";
 }
 
@@ -34,7 +43,7 @@ async function commit_and_push(params, gitOrExec, platform) {
     return error('BRANCH_MISMATCH');
   }
 
-  // Check if there are changes to commit (skip if clean)
+  // Check if there are changes to commit
   try {
     git.execSync('git status --porcelain');
   } catch {
@@ -65,7 +74,21 @@ async function commit_and_push(params, gitOrExec, platform) {
       } else {
         git.execSync('git add -A');
       }
-      git.execSync(`git commit -m ${escapeShellArg(message)}`);
+      try {
+        // Windows cmd.exe cannot handle multi-line -m; use multiple -m flags.
+        if (PLATFORM === 'win32' && message.includes('\n')) {
+          const lines = message.split('\n');
+          const args = lines.map(l => `-m ${escapeShellArg(l)}`).join(' ');
+          git.execSync(`git commit ${args}`);
+        } else {
+          git.execSync(`git commit -m ${escapeShellArg(message)}`);
+        }
+      } catch (e) {
+        const msg = (e.stderr?.toString() || '') + (e.stdout?.toString() || '');
+        if (!msg.includes('nothing to commit') && !msg.includes('nothing added to commit')) {
+          throw e;
+        }
+      }
     }
 
     git.execSync(`git push origin ${escapeShellArg(targetBranch)}`);
