@@ -32,7 +32,7 @@ async function get_review_plan(params, platform, config) {
   }
 
   // No params: return ALL open PRs
-  if (!pr_number && !branch) {
+  if (!pr_number) {
     try {
       const allPrs = await platform.listPRs("open");
       
