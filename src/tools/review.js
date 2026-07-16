@@ -12,7 +12,22 @@ function getPhaseCheckRuns(checkRuns) {
 }
 
 async function get_review_plan(params, platform, config) {
-  const { pr_number } = params || {};
+  let { pr_number, branch } = params || {};
+
+  // Resolve branch to PR number when pr_number is not provided
+  if (!pr_number && branch) {
+    try {
+      const head = branch.includes(":")
+        ? branch
+        : `${platform.owner}:${branch}`;
+      const prs = await platform.listPRs("open", head);
+      if (prs.length > 0) {
+        pr_number = prs[0].number;
+      }
+    } catch {
+      // Fall through to getPR which will return a proper error
+    }
+  }
 
   if (!platform) {
     return {
@@ -138,7 +153,22 @@ async function tryV2Compat(platform, prNumber, currentSha) {
 }
 
 async function get_review_status(params, platform) {
-  const { pr_number } = params || {};
+  let { pr_number, branch } = params || {};
+
+  // Resolve branch to PR number when pr_number is not provided
+  if (!pr_number && branch) {
+    try {
+      const head = branch.includes(":")
+        ? branch
+        : `${platform.owner}:${branch}`;
+      const prs = await platform.listPRs("open", head);
+      if (prs.length > 0) {
+        pr_number = prs[0].number;
+      }
+    } catch {
+      // Fall through to getPR which will return a proper error
+    }
+  }
 
   let pr;
   try {
