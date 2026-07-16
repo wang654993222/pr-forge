@@ -7,7 +7,9 @@
     "pr-forge": "src/cli.js"
   },
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "lint": "eslint src/",
+    "test": "node --test"
   },
   "keywords": [
     "mcp",
@@ -24,5 +26,9 @@
   "files": [
     "src/",
     "README.md"
-  ]
+  ],
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0"
+  }
 }
