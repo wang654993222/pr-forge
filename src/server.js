@@ -52,7 +52,6 @@ const TOOLS = [
       properties: {
         path: { type: 'string', description: '文件路径（相对于仓库根目录）' },
         ref: { type: 'string', description: '分支或 commit SHA（可选）' },
-        max_bytes: { type: 'number', description: '最大返回字节数（可选，默认 512000）' },
       },
       required: ['path'],
     },
@@ -128,7 +127,7 @@ class PrFlowServer {
   constructor() {
     this.projectRoot = getProjectRoot();
     this.platformInfo = getPlatformInfo(process.env);
-    this.platform = null;
+    this.platform = null; // lazy init: resolvePlatform is async for App tokens
     this.config = loadConfig(this.projectRoot);
   }
 
@@ -141,6 +140,7 @@ class PrFlowServer {
   }
 
   async handleToolCall(name, params) {
+    const env = process.env;
     const platform = await this.resolvePlatform();
 
     switch (name) {
@@ -188,12 +188,14 @@ class PrFlowServer {
 
       case 'get_review_plan': {
         if (!platform) return { ok: false, error: { code: 'AUTH_REQUIRED', message: 'Platform not configured' } };
+        // Handle auto-detect (no pr_number/branch)
         let resolvedParams = { ...params };
         if (!resolvedParams.pr_number && !resolvedParams.branch) {
           const branch = getCurrentBranch();
           if (branch && !['main', 'master'].includes(branch)) {
             resolvedParams.branch = branch;
           } else {
+            // Fallback: list open PRs, get latest
             try {
               const prs = await platform.listPRs('open');
               if (prs.length > 0) {
@@ -232,7 +234,7 @@ async function startServer() {
           id: msg.id,
           result: {
             protocolVersion: '2024-11-05',
-            serverInfo: { name: 'pr-forge', version: '3.4.1' },
+            serverInfo: { name: 'pr-forge', version: '3.4.0' },
             capabilities: { tools: {} },
           },
         }) + '\n');
@@ -256,6 +258,7 @@ async function startServer() {
         // no response needed
       }
     } catch (e) {
+      // Log error but continue
       process.stderr.write(`pr-forge error: ${e.message}\n`);
     }
   }

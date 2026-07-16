@@ -1,0 +1,11 @@
+{
+  "version": "3.0",
+  "timeout": 300,
+  "phases": [
+    {
+      "id": "verify",
+      "name": "验证",
+      "check": "npm run lint && npm test"
+    }
+  ]
+}

@@ -1,6 +1,78 @@
+import { createPrivateKey, sign } from 'node:crypto';
 import { ErrorCode } from '../error-codes.js';
 
 const GITHUB_API = 'https://api.github.com';
+
+// JWT signing with raw RSA (zero npm deps, Node 20+ built-in)
+function createAppJWT(appId, privateKeyPem) {
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iat: now - 60,
+    exp: now + 600,
+    iss: String(appId),
+  };
+
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+
+  try {
+    const keyObj = createPrivateKey(privateKeyPem);
+    const signatureBytes = sign('RSA-SHA256', Buffer.from(signingInput), keyObj);
+    const encodedSignature = signatureBytes.toString('base64url');
+    return `${signingInput}.${encodedSignature}`;
+  } catch {
+    return null;
+  }
+}
+
+// Exchange JWT for an installation access token
+async function getInstallationToken(jwt, knownInstallationId, owner, repo) {
+  let instId = knownInstallationId;
+
+  // Auto-discover installation ID if not known
+  if (!instId) {
+    try {
+      const appRes = await fetch(`${GITHUB_API}/app/installations`, {
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+      if (!appRes.ok) throw new Error(`HTTP ${appRes.status}`);
+      const installations = await appRes.json();
+      // Find the installation for this repo
+      for (const inst of installations) {
+        if (inst.account && inst.account.login === owner) {
+          instId = inst.id;
+          break;
+        }
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  if (!instId) return null;
+
+  try {
+    const tokenRes = await fetch(`${GITHUB_API}/app/installations/${instId}/access_tokens`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+    if (!tokenRes.ok) throw new Error(`HTTP ${tokenRes.status}`);
+    const data = await tokenRes.json();
+    return data.token;
+  } catch {
+    return null;
+  }
+}
 
 class GitHubPlatform {
   constructor(token, owner, repo) {
@@ -144,6 +216,11 @@ class GitHubPlatform {
     const { data } = await this.fetchApi(`/repos/${this.owner}/${this.repo}/issues/${prNumber}/comments`);
     return data;
   }
+
+  async listReviews(prNumber) {
+    const { data } = await this.fetchApi(`/repos/${this.owner}/${this.repo}/pulls/${prNumber}/reviews`);
+    return data;
+  }
 }
 
-export { GitHubPlatform };
+export { GitHubPlatform, createAppJWT, getInstallationToken };

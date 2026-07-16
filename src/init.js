@@ -41,19 +41,13 @@ function generateConfig(projectRoot, defaultPhases) {
   fs.mkdirSync(prForgeDir, { recursive: true });
 
   const configPath = path.join(prForgeDir, 'config.json');
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+  const configContent = JSON.stringify(config, null, 2) + '\n';
+  fs.writeFileSync(configPath, configContent);
 
-  const hash = createHash('sha256').update(JSON.stringify(config)).digest('hex');
+  const hash = createHash('sha256').update(configContent).digest('hex');
   fs.writeFileSync(path.join(prForgeDir, '.approved'), hash);
 
   return config;
-}
-
-function saveCredentials(token) {
-  const credDir = path.join(homedir(), '.pr-forge');
-  fs.mkdirSync(credDir, { recursive: true, mode: 0o700 });
-  const credPath = path.join(credDir, 'credentials');
-  fs.writeFileSync(credPath, JSON.stringify({ token, created_at: new Date().toISOString() }), { mode: 0o600 });
 }
 
 function readCredentials() {
@@ -68,18 +62,45 @@ function readCredentials() {
   return null;
 }
 
+function saveCredentials(data) {
+  const credDir = path.join(homedir(), '.pr-forge');
+  fs.mkdirSync(credDir, { recursive: true, mode: 0o700 });
+  const credPath = path.join(credDir, 'credentials');
+  fs.writeFileSync(credPath, JSON.stringify({ ...data, created_at: data.created_at || new Date().toISOString() }), { mode: 0o600 });
+}
+
+function hasAppCredentials() {
+  const creds = readCredentials();
+  return !!(creds?.appId && creds?.privateKey);
+}
+
 function generateMcpJson(projectRoot, packageName) {
   const mcpJsonPath = path.join(projectRoot, '.claude');
   fs.mkdirSync(mcpJsonPath, { recursive: true });
+
+  const creds = readCredentials();
+  const env = {};
+
+  // PAT mode: pass PR_FORGE_TOKEN env var
+  if (creds?.token) {
+    env.PR_FORGE_TOKEN = creds.token;
+  }
+
+  // GitHub App mode: pass app credentials as env vars
+  if (creds?.appId && creds?.privateKey) {
+    env.PR_FORGE_GITHUB_APP_ID = String(creds.appId);
+    env.PR_FORGE_GITHUB_APP_PRIVATE_KEY = creds.privateKey;
+    if (creds.installationId) {
+      env.PR_FORGE_GITHUB_APP_INSTALLATION_ID = String(creds.installationId);
+    }
+  }
 
   const mcpConfig = {
     mcpServers: {
       'pr-forge': {
         command: 'npx',
         args: ['-y', packageName || 'pr-forge'],
-        env: {
-          PR_FORGE_TOKEN: readCredentials()?.token || '',
-        },
+        env,
       },
     },
   };
@@ -108,6 +129,7 @@ export {
   generateConfig,
   saveCredentials,
   readCredentials,
+  hasAppCredentials,
   generateMcpJson,
   checkV2Install,
   PROJECT_DETECTORS,
