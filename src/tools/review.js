@@ -12,7 +12,7 @@ function getPhaseCheckRuns(checkRuns) {
 }
 
 async function get_review_plan(params, platform, config) {
-  const { pr_number } = params || {};
+  const { pr_number, branch } = params || {};
 
   if (!platform) {
     return {
@@ -31,7 +31,24 @@ async function get_review_plan(params, platform, config) {
 
   let pr;
   try {
-    pr = await platform.getPR(pr_number);
+    if (pr_number) {
+      pr = await platform.getPR(pr_number);
+    } else if (branch) {
+      const prs = await platform.listPRs('open', `${platform.owner}:${branch}`);
+      if (prs.length === 0) {
+        return error('PR_NOT_FOUND');
+      }
+      if (prs.length > 1) {
+        return {
+          ok: true,
+          candidates: prs.map(p => ({ number: p.number, title: p.title, head_sha: p.head_sha })),
+          message: `分支 ${branch} 匹配到 ${prs.length} 个 open PR，请用 pr_number 选择`,
+        };
+      }
+      pr = prs[0];
+    } else {
+      return error('PR_NOT_FOUND');
+    }
   } catch (e) {
     return error(e.code || 'PR_NOT_FOUND');
   }

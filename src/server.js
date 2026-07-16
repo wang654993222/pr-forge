@@ -123,7 +123,7 @@ const TOOLS = [
   },
 ];
 
-class PrFlowServer {
+class PrForgeServer {
   constructor() {
     this.projectRoot = getProjectRoot();
     this.platformInfo = getPlatformInfo(process.env);
@@ -213,7 +213,7 @@ class PrFlowServer {
 }
 
 async function startServer() {
-  const server = new PrFlowServer();
+  const server = new PrForgeServer();
   const rl = readlineFromStdin();
 
   for await (const line of rl) {
@@ -225,7 +225,7 @@ async function startServer() {
           id: msg.id,
           result: {
             protocolVersion: '2024-11-05',
-            serverInfo: { name: 'pr-forge', version: '3.0.0' },
+            serverInfo: { name: 'pr-forge', version: '3.0.5' },
             capabilities: { tools: {} },
           },
         }) + '\n');
@@ -275,4 +275,4 @@ function readlineFromStdin() {
   return rl;
 }
 
-export { startServer, PrFlowServer, TOOLS };
+export { startServer, PrForgeServer, TOOLS };
