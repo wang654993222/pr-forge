@@ -128,7 +128,6 @@ class PrFlowServer {
     this.projectRoot = getProjectRoot();
     this.platformInfo = getPlatformInfo(process.env);
     this.platform = null; // lazy init: resolvePlatform is async for App tokens
-    this.config = loadConfig(this.projectRoot);
   }
 
   async resolvePlatform() {
@@ -137,6 +136,10 @@ class PrFlowServer {
       this.platform = this.platformInfo ? await resolvePlatform(process.env) : null;
     }
     return this.platform;
+  }
+
+  getConfig() {
+    return loadConfig(this.projectRoot);
   }
 
   async handleToolCall(name, params) {
@@ -179,7 +182,9 @@ class PrFlowServer {
           releaseLock: () => releaseLock(this.projectRoot, params.pr_number),
         };
         const git = { execSync };
-        return await run_pr_checks(params, this.config, platform, context, git);
+        const config = this.getConfig();
+        if (!config) return { ok: false, error: { code: 'NO_CONFIG', message: 'No .pr-forge/config.json found' } };
+        return await run_pr_checks(params, config, platform, context, git);
       }
 
       case 'set_conclusion':
@@ -208,7 +213,7 @@ class PrFlowServer {
             }
           }
         }
-        return await get_review_plan(resolvedParams, platform, this.config);
+        return await get_review_plan(resolvedParams, platform, this.getConfig());
       }
 
       default:

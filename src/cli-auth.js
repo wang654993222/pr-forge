@@ -41,7 +41,7 @@ function buildManifest(owner, redirectUrl) {
     default_permissions: {
       checks: 'write',
       pull_requests: 'write',
-      contents: 'read',
+      contents: 'write',
       metadata: 'read',
     },
     default_events: [],
