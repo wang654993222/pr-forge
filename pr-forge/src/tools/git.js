@@ -14,6 +14,23 @@ function escapeShellArg(arg) {
   return "'" + String(arg).replace(/'/g, "'\\''") + "'";
 }
 
+// Auto-detect the default branch name (main/master) from git remote.
+function getDefaultBranch(git) {
+  try {
+    const ref = git.execSync('git symbolic-ref refs/remotes/origin/HEAD').toString().trim();
+    return ref.replace('refs/remotes/origin/', '');
+  } catch {
+    // Fallback: try 'main' first, then 'master'.
+    try {
+      git.execSync('git rev-parse --verify origin/main');
+      return 'main';
+    } catch {
+      try { git.execSync('git rev-parse --verify origin/master'); return 'master'; }
+      catch { return 'main'; }
+    }
+  }
+}
+
 async function commit_and_push(params, gitOrExec, platform) {
   const git = gitOrExec || { execSync };
   const { message, pr_number, branch, files, reviewer, title } = params;
@@ -97,7 +114,7 @@ async function commit_and_push(params, gitOrExec, platform) {
     let resolvedPrNumber = pr_number;
     if (!resolvedPrNumber && platform) {
       try {
-        const head = `${platform.owner}:${targetBranch}`;
+        const head = targetBranch;
         const prs = await platform.listPRs('open', head);
         if (prs.length > 0) {
           resolvedPrNumber = prs[0].number;
@@ -106,11 +123,12 @@ async function commit_and_push(params, gitOrExec, platform) {
           const prBody = reviewer
             ? `<!-- pr-forge-reviewer: ${reviewer} -->\n\n${message}`
             : message;
-          const newPr = await platform.createPR(prTitle, targetBranch, 'main', prBody);
+          const base = getDefaultBranch(git);
+          const newPr = await platform.createPR(prTitle, targetBranch, base, prBody);
           resolvedPrNumber = newPr.number;
         }
-      } catch {
-        // PR creation is best-effort; push already succeeded
+      } catch (err) {
+        console.error('pr-forge: PR creation failed:', err.message);
       }
     }
 
