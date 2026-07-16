@@ -2,14 +2,6 @@ import { error } from '../error-codes.js';
 
 const PR_FORGE_CHECK_RUN_PREFIX = 'pr-forge/';
 
-function getPhaseCheckRuns(checkRuns) {
-  const all = checkRuns?.check_runs || [];
-  return {
-    phases: all
-      .filter((cr) => cr.name.startsWith(PR_FORGE_CHECK_RUN_PREFIX) && cr.name !== 'pr-forge/conclusion'),
-    conclusion: all.find((cr) => cr.name === 'pr-forge/conclusion') || null,
-  };
-}
 
 async function get_review_plan(params, platform, config) {
   let { pr_number, branch } = params || {};
