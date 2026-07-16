@@ -50,7 +50,7 @@ async function run_pr_checks(params, config, platform, context, gitExec) {
         const changedFiles = git.execSync(
           `git diff --name-only origin/${pr.base_ref}...HEAD`
         ).toString().trim();
-        if (!changedFiles) return false;
+        if (!changedFiles) return true; // empty diff — stale checkout, run checks to be safe
         return changedFiles.split('\n').some((f) => {
           const name = f.replace(/^.*[/\\]/, '').toLowerCase();
           if (DOC_EXTENSIONS.has(f.substring(f.lastIndexOf('.')).toLowerCase())) return false;
