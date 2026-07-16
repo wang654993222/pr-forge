@@ -91,7 +91,9 @@ async function run_pr_checks(params, config, platform, context, gitExec) {
             conclusion: 'success',
             output: { title: phase.name || phase.id, summary },
           });
-        } catch {}
+        } catch {
+            // Check Run write failure is non-fatal
+          }
         continue;
       }
 
