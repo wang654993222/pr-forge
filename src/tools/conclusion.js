@@ -38,12 +38,12 @@ async function set_conclusion(params, platform) {
     if (existingConclusion) {
       result = await platform.updateCheckRun(existingConclusion.id, {
         conclusion,
-        output: { title: 'PR Flow 审查结论', summary: `审查结论: ${conclusion}`, text: truncatedText },
+        output: { title: 'PR Forge 审查结论', summary: `审查结论: ${conclusion}`, text: truncatedText },
       });
     } else {
       result = await platform.createCheckRun(pr.head_sha, 'pr-forge/conclusion', {
         conclusion,
-        output: { title: 'PR Flow 审查结论', summary: `审查结论: ${conclusion}`, text: truncatedText },
+        output: { title: 'PR Forge 审查结论', summary: `审查结论: ${conclusion}`, text: truncatedText },
       });
     }
 
