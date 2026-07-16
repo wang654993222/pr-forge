@@ -23,9 +23,22 @@ class GiteePlatform {
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
 
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
       const e = new Error(ErrorCode.AUTH_REQUIRED.message);
       e.code = ErrorCode.AUTH_REQUIRED.code;
+      throw e;
+    }
+    if (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0') {
+      const e = new Error(ErrorCode.RATE_LIMITED.message);
+      e.code = ErrorCode.RATE_LIMITED.code;
+      e.retryAfter = res.headers.get('x-ratelimit-reset');
+      throw e;
+    }
+    if (res.status === 429) {
+      const e = new Error(ErrorCode.RATE_LIMITED.message);
+      e.code = ErrorCode.RATE_LIMITED.code;
+      const retryAfter = res.headers.get('retry-after');
+      if (retryAfter) e.retryAfter = retryAfter;
       throw e;
     }
     if (res.status === 404) {

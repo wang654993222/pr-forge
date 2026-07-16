@@ -29,7 +29,7 @@ async function get_pr_diff(params, platform) {
 }
 
 async function get_file_content(params, platform) {
-  const { path: filePath, ref } = params;
+  const { path: filePath, ref, max_bytes } = params;
 
   if (!filePath || typeof filePath !== 'string') {
     return error('INVALID_PATH');
@@ -41,7 +41,20 @@ async function get_file_content(params, platform) {
 
   try {
     const content = await platform.getFileContent(filePath, ref || undefined);
-    return { ok: true, content };
+    const limit = max_bytes && max_bytes > 0 ? max_bytes : 512000;
+    const result = {
+      ok: true,
+      content_bytes: Buffer.byteLength(content, 'utf-8'),
+    };
+
+    if (content.length > limit) {
+      result.content = content.slice(0, limit);
+      result.truncated = true;
+    } else {
+      result.content = content;
+    }
+
+    return result;
   } catch (e) {
     if (e.code) return error(e.code);
     if (e.message && e.message.includes('404')) {
