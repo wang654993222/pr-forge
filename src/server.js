@@ -234,7 +234,7 @@ async function startServer() {
           id: msg.id,
           result: {
             protocolVersion: '2024-11-05',
-            serverInfo: { name: 'pr-forge', version: '3.0.0' },
+            serverInfo: { name: 'pr-forge', version: '3.4.0' },
             capabilities: { tools: {} },
           },
         }) + '\n');
