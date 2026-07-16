@@ -35,7 +35,7 @@ async function run_pr_checks(params, config, platform, context, gitExec) {
     const prHeadSha = pr.head_sha;
 
     // Fetch and checkout PR branch
-    git.execSync(`git fetch origin pull/${pr_number}/head:pr-${pr_number}`);
+    git.execSync(`git fetch origin +pull/${pr_number}/head:pr-${pr_number}`);
     git.execSync(`git checkout pr-${pr_number}`);
 
     const phases = config.phases.filter(
